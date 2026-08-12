@@ -1,0 +1,69 @@
+{
+  "SLIDE_1_CRECIMIENTO\nMERCADO HIPER SUR": {
+    "titulo": "CRECIMIENTO\nMERCADO HIPER SUR",
+    "textos": [
+      "CRECIMIENTO\nMERCADO HIPER SUR"
+    ],
+    "tabla": []
+  },
+  "SLIDE_2_TRAFICO": {
+    "titulo": "TRAFICO",
+    "textos": [
+      "TRAFICO",
+      "TRAFICO HIPER",
+      "TRAFICO SUR S33"
+    ],
+    "tabla": []
+  },
+  "SLIDE_3_DIA DEL NIÑO": {
+    "titulo": "DIA DEL NIÑO",
+    "textos": [
+      "DIA DEL NIÑO",
+      "DIA DEL NIÑO HIPER  SUR S33",
+      "DIA DEL NIÑO HIPER"
+    ],
+    "tabla": []
+  },
+  "SLIDE_4_BEP HIPER": {
+    "titulo": "BEP HIPER",
+    "textos": [
+      "BEP HIPER",
+      "BEP SUR S33",
+      "BEP"
+    ],
+    "tabla": []
+  },
+  "SLIDE_5_LIQUIDACION HIPER SUR 2026": {
+    "titulo": "LIQUIDACION HIPER SUR 2026",
+    "textos": [
+      "LIQUIDACION HIPER SUR 2026",
+      "LIQUIDACION GM 2026 Hiper \t SUR S30",
+      "LIQUIDACION GM 2026 HIPER",
+      "LIQUIDACION GM 2026 Lider"
+    ],
+    "tabla": []
+  },
+  "SLIDE_6_HSV POLLO ASADO": {
+    "titulo": "HSV POLLO ASADO",
+    "textos": [
+      "HSV POLLO ASADO"
+    ],
+    "tabla": []
+  },
+  "SLIDE_7_HSV PAN BASICO": {
+    "titulo": "HSV PAN BASICO",
+    "textos": [
+      "HSV PAN BASICO",
+      "Perdida de venta Hallulla",
+      "Perdida de venta Marraqueta",
+      "VENTA HALLULLA",
+      "VENTA MARRAQUETA"
+    ],
+    "tabla": []
+  },
+  "SLIDE_8_": {
+    "titulo": "",
+    "textos": [],
+    "tabla": []
+  }
+}
