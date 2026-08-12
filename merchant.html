@@ -1,0 +1,3451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>El Viaje del Merchant - Mercado Sur</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="/chart.umd.min.js"></script>
+<script>
+  // Fallback CDN: si el chart.umd.min.js local no cargo (404, etc),
+  // baja desde jsdelivr. Sincronico con document.write para asegurar
+  // que este listo antes de que corra el JS del dashboard.
+  if (typeof Chart === 'undefined') {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>');
+  }
+</script>
+<style>
+  :root {
+    --wm-blue:#0071ce; --wm-blue-dark:#001f6e;
+    --wm-yellow:#ffc220; --wm-purple:#4338ca;
+    --good:#047857; --bad:#b91c1c; --mid:#b45309;
+    --border:#e2e8f0;
+  }
+  body {
+    font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    background:linear-gradient(180deg,#eef2ff 0%,#f8fafc 320px,#f8fafc 100%);
+    min-height:100vh; margin:0; color:#1e293b;
+  }
+
+  /* Header */
+  .hdr {
+    background:linear-gradient(135deg,#001f6e 0%,#0053e2 55%,#4338ca 100%);
+    box-shadow:0 8px 32px rgba(0,31,110,.35);
+    position:sticky; top:0; z-index:50;
+    color:#fff;
+  }
+  .hdr .btn-back {
+    background:rgba(255,255,255,.15); color:#fff; border:2px solid rgba(255,255,255,.35);
+    padding:8px 14px; border-radius:10px; font-weight:800; cursor:pointer;
+    backdrop-filter:blur(6px); font-size:.85rem;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .hdr .btn-back:hover { background:rgba(255,255,255,.28); }
+  .hdr .badge-beta {
+    background:var(--wm-yellow); color:#001f6e; padding:3px 10px; border-radius:999px;
+    font-size:.65rem; font-weight:900; text-transform:uppercase; letter-spacing:.05em;
+  }
+
+  /* Filter bar sticky */
+  .filter-bar {
+    position:sticky; top:78px; z-index:40; background:#fff;
+    border-bottom:2px solid var(--border); box-shadow:0 4px 16px rgba(0,0,0,.06);
+  }
+  .filter-bar select {
+    padding:10px 40px 10px 14px; border-radius:10px;
+    border:2px solid var(--wm-purple); background:#eef2ff url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='%234338ca' d='M5.5 7l4.5 4.5L14.5 7'/%3e%3c/svg%3e") no-repeat right 10px center/16px;
+    font-size:.95rem; font-weight:800; color:var(--wm-blue-dark); cursor:pointer;
+    -webkit-appearance:none; appearance:none; min-width:240px;
+  }
+  .filter-bar select:focus { outline:0; box-shadow:0 0 0 3px rgba(67,56,202,.25); }
+
+  /* KPI cards */
+  .kpi {
+    background:#fff; border-radius:14px; padding:16px 18px;
+    box-shadow:0 4px 20px rgba(0,0,0,.06); border:1px solid var(--border);
+    display:flex; flex-direction:column; gap:4px; min-height:118px;
+    position:relative; overflow:hidden;
+  }
+  .kpi::before {
+    content:''; position:absolute; left:0; top:0; bottom:0; width:5px;
+    background:linear-gradient(180deg,var(--wm-blue),var(--wm-purple));
+  }
+  .kpi .lbl { font-size:.68rem; font-weight:800; letter-spacing:.05em;
+              text-transform:uppercase; color:#64748b; }
+  .kpi-wip { display:inline-block; margin-left:6px; padding:1px 6px;
+             font-size:.55rem; font-weight:900; letter-spacing:.06em;
+             background:#fef3c7; color:#92400e; border:1px solid #fbbf24;
+             border-radius:6px; vertical-align:middle;
+             text-transform:uppercase; white-space:nowrap; }
+  .kpi .val { font-size:1.75rem; font-weight:900; color:#0f172a; line-height:1.1;
+              font-variant-numeric:tabular-nums; margin-top:2px; }
+  .kpi .sub { font-size:.75rem; font-weight:700; margin-top:6px; }
+  .kpi .sub.good { color:var(--good); }
+  .kpi .sub.bad  { color:var(--bad); }
+  .kpi .sub.mid  { color:var(--mid); }
+
+  /* Group card (ACP/GM/PPS) */
+  .grp-card {
+    background:#fff; border-radius:14px; overflow:hidden;
+    box-shadow:0 4px 20px rgba(0,0,0,.06); border:1px solid var(--border);
+  }
+  .grp-hd {
+    padding:12px 16px; color:#fff;
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    font-weight:900; letter-spacing:.02em;
+  }
+  .grp-hd.ACP { background:linear-gradient(135deg,#0891b2,#06b6d4); }
+  .grp-hd.GM  { background:linear-gradient(135deg,#7c3aed,#a855f7); }
+  .grp-hd.PPS { background:linear-gradient(135deg,#dc2626,#ef4444); }
+  .grp-hd .tag {
+    padding:3px 10px; border-radius:999px; background:rgba(255,255,255,.22);
+    font-size:.68rem; font-weight:800; text-transform:uppercase;
+  }
+  .grp-b { padding:14px 16px; }
+  .grp-metrics {
+    /* 3 columnas x 3 filas = 9 celdas: Plan, Venta, Avance, Unidades,
+       Desviacion, Var LY, Completitud SS, Instock BQ. */
+    display:grid; grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:10px; margin-bottom:12px;
+  }
+  .grp-metrics .m {
+    background:#f8fafc; border-radius:10px; padding:10px 12px;
+    border:1px solid var(--border);
+  }
+  .grp-metrics .m .l { font-size:.62rem; font-weight:800; color:#64748b;
+                       text-transform:uppercase; letter-spacing:.04em; }
+  .grp-metrics .m .v { font-size:1.05rem; font-weight:900; color:#0f172a;
+                       font-variant-numeric:tabular-nums; margin-top:2px; }
+  .grp-metrics .m .s { font-size:.68rem; font-weight:700; margin-top:2px; }
+
+  /* ============================================================
+     Departamento colapsable (accordion)
+     ============================================================ */
+  .dept-group { margin-bottom:16px; }
+  .dept-group-title {
+    font-size:.88rem; font-weight:900; color:#fff; padding:10px 14px;
+    border-radius:10px 10px 0 0; letter-spacing:.03em;
+  }
+  .dept-group-title.ACP { background:linear-gradient(135deg,#0891b2,#06b6d4); }
+  .dept-group-title.GM  { background:linear-gradient(135deg,#7c3aed,#a855f7); }
+  .dept-group-title.PPS { background:linear-gradient(135deg,#dc2626,#ef4444); }
+
+  .dept-list {
+    background:#fff; border:1px solid var(--border); border-top:none;
+    border-radius:0 0 12px 12px; overflow:hidden;
+    box-shadow:0 4px 20px rgba(0,0,0,.06);
+  }
+  .dept-row {
+    border-bottom:1px solid #f1f5f9;
+  }
+  .dept-row:last-child { border-bottom:none; }
+
+  /* Cabecera clickeable */
+  .dept-head {
+    padding:14px 16px; cursor:pointer;
+    display:grid; grid-template-columns:auto 1fr auto auto; gap:14px;
+    align-items:center; transition:background .15s ease;
+  }
+  .dept-head:hover, .dept-head:focus-visible { background:#f8fafc; outline:none; }
+  .dept-head:focus-visible { box-shadow: inset 0 0 0 3px rgba(67,56,202,.25); }
+
+  .dept-chevron {
+    width:26px; height:26px; border-radius:6px; background:#eef2ff;
+    color:var(--wm-purple); display:flex; align-items:center; justify-content:center;
+    font-size:.85rem; font-weight:900; transition:transform .2s ease;
+  }
+  .dept-row.open .dept-chevron { transform:rotate(90deg); }
+
+  .dept-name { font-size:.95rem; font-weight:800; color:#0f172a; }
+
+  .dept-quick { font-size:.75rem; font-weight:700; color:#475569;
+                white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .dept-quick .lbl { color:#94a3b8; font-weight:600; margin-right:3px; text-transform:uppercase; font-size:.62rem; }
+
+  .dept-cumpl {
+    padding:5px 10px; border-radius:999px; font-size:.72rem; font-weight:900;
+    font-variant-numeric:tabular-nums; min-width:58px; text-align:center;
+  }
+  .dept-cumpl.good { background:#d1fae5; color:#065f46; }
+  .dept-cumpl.mid  { background:#fef3c7; color:#92400e; }
+  .dept-cumpl.bad  { background:#fee2e2; color:#991b1b; }
+
+  /* Cuerpo expandido */
+  .dept-body {
+    display:none; padding:14px 18px 18px 60px;
+    background:linear-gradient(180deg,#fafbff,#ffffff);
+    border-top:1px dashed #e0e7ff;
+  }
+  .dept-row.open .dept-body { display:block; }
+
+  .dept-metrics {
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:10px; margin-bottom:14px;
+  }
+  .dept-metric {
+    background:#fff; border:1px solid var(--border); border-radius:10px;
+    padding:10px 12px;
+  }
+  .dept-metric .l { font-size:.6rem; font-weight:800; color:#64748b;
+                    text-transform:uppercase; letter-spacing:.05em; margin-bottom:2px; }
+  .dept-metric .v { font-size:1rem; font-weight:900; color:#0f172a;
+                    font-variant-numeric:tabular-nums; }
+  .dept-metric .s { font-size:.68rem; font-weight:700; margin-top:2px; }
+
+  .store-breakdown-title {
+    font-size:.72rem; font-weight:800; color:var(--wm-blue-dark);
+    text-transform:uppercase; letter-spacing:.05em; margin:14px 0 6px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .store-breakdown-title::before { content:''; width:12px; height:2px; background:var(--wm-purple); border-radius:2px; }
+  .store-breakdown-title .count {
+    background:#eef2ff; color:var(--wm-purple); padding:2px 8px;
+    border-radius:999px; font-size:.62rem; margin-left:auto;
+  }
+
+  .subcatg-table-wrap {
+    max-height:340px; overflow-y:auto; overflow-x:auto;
+    border:1px solid var(--border); border-radius:8px; background:#fff;
+    box-shadow: inset 0 -8px 12px -8px rgba(0,0,0,.05);
+  }
+  table.subcatg-tbl { width:100%; border-collapse:collapse; font-size:.75rem; }
+  table.subcatg-tbl thead th {
+    position:sticky; top:0; z-index:1;
+    background:#f1f5f9; color:#334155; font-weight:800;
+    text-transform:uppercase; letter-spacing:.03em; font-size:.58rem;
+    padding:.5rem .5rem; border-bottom:2px solid #cbd5e1;
+    text-align:right; white-space:nowrap;
+  }
+  table.subcatg-tbl thead th:first-child,
+  table.subcatg-tbl thead th:nth-child(2) { text-align:left; }
+  table.subcatg-tbl tbody td {
+    padding:.45rem .5rem; border-bottom:1px solid #f1f5f9;
+    text-align:right; font-variant-numeric:tabular-nums;
+  }
+  table.subcatg-tbl tbody td:first-child {
+    text-align:left; color:#64748b; font-size:.68rem; font-weight:600;
+    text-transform:uppercase; letter-spacing:.02em; max-width:140px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  table.subcatg-tbl tbody td:nth-child(2) {
+    text-align:left; font-weight:700; color:#0f172a;
+  }
+  table.subcatg-tbl tbody tr:hover { background:#f8fafc; }
+  table.subcatg-tbl tbody tr:last-child td { border-bottom:none; }
+
+  .subcatg-empty {
+    padding:14px; text-align:center; color:#94a3b8; font-size:.78rem;
+    font-style:italic; background:#fafbff; border-radius:8px;
+    border:1px dashed #e2e8f0;
+  }
+
+  /* ============================================================
+     Sub-departamento (BQ dept) - acordeon anidado dentro del depto
+     ============================================================ */
+  .bqd-list {
+    background:#fff; border:1px solid var(--border); border-radius:10px;
+    overflow:hidden;
+  }
+  .bqd-row { border-bottom:1px solid #eef2ff; }
+  .bqd-row:last-child { border-bottom:none; }
+
+  .bqd-head {
+    padding:10px 12px; cursor:pointer;
+    display:grid; grid-template-columns:auto 1fr auto auto auto auto; gap:10px;
+    align-items:center; transition:background .15s ease; background:#f8faff;
+  }
+  .bqd-head:hover, .bqd-head:focus-visible {
+    background:#eef2ff; outline:none;
+  }
+  .bqd-head:focus-visible { box-shadow: inset 0 0 0 3px rgba(67,56,202,.25); }
+
+  .bqd-chevron {
+    width:22px; height:22px; border-radius:5px; background:#e0e7ff;
+    color:#4338ca; display:flex; align-items:center; justify-content:center;
+    font-size:.75rem; font-weight:900; transition:transform .2s ease;
+  }
+  .bqd-row.open .bqd-chevron { transform:rotate(90deg); }
+
+  .bqd-name {
+    font-size:.85rem; font-weight:800; color:#1e293b;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .bqd-quick {
+    font-size:.72rem; font-weight:700; color:#475569;
+    white-space:nowrap; font-variant-numeric:tabular-nums;
+  }
+  .bqd-quick .lbl {
+    color:#94a3b8; font-weight:600; margin-right:3px;
+    text-transform:uppercase; font-size:.6rem;
+  }
+  .bqd-subcount {
+    background:#fff; color:#4338ca; padding:3px 9px; border-radius:999px;
+    font-size:.62rem; font-weight:800; border:1px solid #c7d2fe;
+    white-space:nowrap;
+  }
+
+  .bqd-body {
+    display:none; padding:10px 14px 14px 44px;
+    background:linear-gradient(180deg,#fdfefe,#ffffff);
+    border-top:1px dashed #e0e7ff;
+  }
+  .bqd-row.open .bqd-body { display:block; }
+
+  @media (max-width:640px) {
+    .bqd-head {
+      grid-template-columns:auto 1fr auto auto; gap:8px;
+      padding:10px 8px;
+    }
+    .bqd-quick, .bqd-subcount { display:none; }
+    .bqd-body { padding:10px 8px 12px 32px; }
+  }
+
+  /* ============================================================
+     Buscador global (filtra depto, sub-depto, categoria, subcatg)
+     ============================================================ */
+  .search-wrap {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    margin: 4px 0 12px;
+  }
+  .search-box {
+    position:relative; flex:1 1 280px; min-width:220px; max-width:520px;
+  }
+  .search-box input {
+    width:100%; padding:11px 42px 11px 42px;
+    border-radius:10px; border:2px solid #cbd5e1; background:#fff;
+    font-size:.95rem; font-weight:600; color:#0f172a;
+    transition:border .15s ease, box-shadow .15s ease;
+  }
+  .search-box input::placeholder { color:#94a3b8; font-weight:500; }
+  .search-box input:focus {
+    outline:none; border-color:var(--wm-purple);
+    box-shadow:0 0 0 3px rgba(67,56,202,.18);
+  }
+  .search-box .icon {
+    position:absolute; left:14px; top:50%; transform:translateY(-50%);
+    color:#64748b; font-size:1rem; pointer-events:none;
+  }
+  .search-box .clear {
+    position:absolute; right:8px; top:50%; transform:translateY(-50%);
+    width:26px; height:26px; border-radius:6px; border:0; cursor:pointer;
+    background:#f1f5f9; color:#475569; font-weight:900; font-size:.9rem;
+    display:none; align-items:center; justify-content:center;
+  }
+  .search-box .clear:hover { background:#e2e8f0; color:#0f172a; }
+  .search-box.active .clear { display:flex; }
+  .search-stats {
+    font-size:.78rem; font-weight:700; color:#475569;
+    background:#eef2ff; padding:6px 12px; border-radius:8px;
+    border:1px solid #c7d2fe;
+  }
+  .search-stats.zero { background:#fef2f2; color:#b91c1c; border-color:#fca5a5; }
+
+  /* Chips de scope (Todos / ACP / GM / PPS) */
+  .scope-chips { display:inline-flex; gap:6px; flex-wrap:wrap; }
+  .scope-chip {
+    padding:8px 14px; border-radius:999px; border:2px solid #e2e8f0;
+    background:#fff; color:#475569; font-weight:800; font-size:.75rem;
+    letter-spacing:.05em; text-transform:uppercase; cursor:pointer;
+    transition:all .15s ease; white-space:nowrap;
+  }
+  .scope-chip:hover { border-color:#94a3b8; color:#0f172a; }
+  .scope-chip:focus-visible {
+    outline:none; box-shadow:0 0 0 3px rgba(67,56,202,.25);
+  }
+  .scope-chip.active {
+    color:#fff; border-color:transparent;
+    background:linear-gradient(135deg,#4338ca,#6366f1);
+    box-shadow:0 2px 6px rgba(67,56,202,.35);
+  }
+  .scope-chip.acp.active { background:linear-gradient(135deg,#0891b2,#06b6d4); box-shadow:0 2px 6px rgba(6,182,212,.4); }
+  .scope-chip.gm.active  { background:linear-gradient(135deg,#7c3aed,#a855f7); box-shadow:0 2px 6px rgba(168,85,247,.4); }
+  .scope-chip.pps.active { background:linear-gradient(135deg,#dc2626,#ef4444); box-shadow:0 2px 6px rgba(239,68,68,.4); }
+
+  /* Cuando hay scope aplicado, ocultar los grupos que no matchean */
+  .scope-hide { display:none !important; }
+
+  /* Filtered visibility toggles (aplicadas por JS al filtrar) */
+  .search-hide { display:none !important; }
+  mark.search-hit {
+    background:#fef08a; color:#78350f; padding:0 2px; border-radius:3px;
+    font-weight:900;
+  }
+
+  /* Firma del autor */
+  .signature {
+    text-align:center; margin:24px 0 12px; padding:14px;
+    color:#94a3b8; font-size:.72rem; font-weight:600; letter-spacing:.05em;
+    text-transform:uppercase;
+  }
+  .signature strong {
+    color:var(--wm-blue-dark); font-weight:900; letter-spacing:.03em;
+  }
+  .signature .dot { color:var(--wm-yellow); font-weight:900; margin:0 6px; }
+
+  .store-breakdown {
+    width:100%; border-collapse:collapse; font-size:.78rem;
+    background:#fff; border:1px solid var(--border); border-radius:8px;
+    overflow:hidden;
+  }
+  .store-breakdown thead th {
+    background:#f1f5f9; color:#334155; font-weight:800;
+    text-transform:uppercase; letter-spacing:.03em; font-size:.6rem;
+    padding:.5rem; border-bottom:2px solid #cbd5e1; text-align:right;
+  }
+  .store-breakdown thead th:first-child { text-align:left; }
+  .store-breakdown tbody td {
+    padding:.5rem; border-bottom:1px solid #f1f5f9;
+    text-align:right; font-variant-numeric:tabular-nums;
+  }
+  .store-breakdown tbody td:first-child { text-align:left; font-weight:700; }
+  .store-breakdown tbody tr:hover { background:#f8fafc; }
+  .store-breakdown tbody tr:last-child td { border-bottom:none; }
+
+  @media (max-width:640px) {
+    .dept-head { grid-template-columns:auto 1fr; gap:10px; }
+    .dept-quick { display:none; }
+    .dept-body { padding:14px 12px 16px 42px; }
+  }
+
+  .pct-good { color:var(--good); font-weight:800; }
+  .pct-bad  { color:var(--bad);  font-weight:800; }
+  .pct-mid  { color:var(--mid);  font-weight:800; }
+
+  /* Chart cards */
+  .chart-card {
+    background:#fff; border-radius:14px; overflow:hidden;
+    box-shadow:0 4px 20px rgba(0,0,0,.06); border:1px solid var(--border);
+  }
+  .chart-hd {
+    padding:12px 16px; color:#fff; font-weight:900; letter-spacing:.02em;
+    display:flex; align-items:center; gap:8px;
+  }
+  .chart-hd.up   { background:linear-gradient(135deg,#047857,#10b981); }
+  .chart-hd.down { background:linear-gradient(135deg,#b91c1c,#ef4444); }
+  .chart-wrap { position:relative; height:320px; padding:16px; }
+
+  /* Analisis narrativo del chart de caida */
+  .chart-analysis {
+    background:#fff8f8; border-top:2px solid #fecaca; padding:14px 18px 16px;
+    font-size:.85rem; color:#334155; line-height:1.5;
+  }
+  .chart-analysis h4 {
+    display:flex; align-items:center; gap:6px; margin:0 0 8px;
+    font-size:.78rem; font-weight:900; text-transform:uppercase;
+    letter-spacing:.05em; color:#b91c1c;
+  }
+  .chart-analysis .lead {
+    font-size:.92rem; font-weight:700; color:#1e293b; margin-bottom:10px;
+  }
+  .chart-analysis ul { margin:0; padding-left:1.1rem; }
+  .chart-analysis li { margin-bottom:6px; }
+  .chart-analysis li b { color:#b91c1c; }
+  .chart-analysis .action-tag {
+    display:inline-block; margin-top:10px; padding:6px 12px;
+    background:linear-gradient(135deg,#0053e2,#3b82f6); color:#fff;
+    border-radius:6px; font-size:.75rem; font-weight:900;
+    text-transform:uppercase; letter-spacing:.05em;
+  }
+
+  /* Variante VERDE para el chart de crecimiento (top gainers) */
+  .chart-analysis-up {
+    background:#f0fdf4; border-top-color:#bbf7d0;
+  }
+  .chart-analysis-up h4 { color:#15803d; }
+  .chart-analysis-up li b { color:#15803d; }
+  .chart-analysis-up .action-tag {
+    background:linear-gradient(135deg,#059669,#10b981);
+  }
+
+  /* Section titles */
+  .sec-title {
+    display:flex; align-items:center; gap:10px; padding:14px 4px 8px;
+    font-size:1.05rem; font-weight:900; color:var(--wm-blue-dark);
+    border-bottom:2px solid #e0e7ff; margin-bottom:14px;
+  }
+  .sec-title .num {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:32px; height:32px; border-radius:8px;
+    background:linear-gradient(135deg,var(--wm-purple),#8b5cf6);
+    color:#fff; font-size:.85rem;
+  }
+
+  /* Loading */
+  #loading {
+    position:fixed; inset:0; background:rgba(248,250,252,.94); z-index:100;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+  }
+  #loading.hidden { display:none; }
+  .spinner {
+    width:52px; height:52px; border:5px solid #e0e7ff; border-top-color:var(--wm-purple);
+    border-radius:50%; animation:spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  #err-box {
+    background:#fef2f2; border:2px solid #fca5a5; color:#991b1b;
+    padding:16px; border-radius:10px; margin:20px; font-weight:600;
+  }
+
+  /* Mobile tweaks */
+  @media (max-width:640px) {
+    .kpi .val { font-size:1.35rem; }
+    .grp-metrics { grid-template-columns:1fr 1fr; }
+    .chart-wrap { height:280px; }
+  }
+
+    .kpi-com { background:linear-gradient(135deg,#fffef7,#fff8dc); border-left:5px solid #ffc220; }
+    .kpi-com .val { color:#001f6e; }
+    /* Section 3 resumen ejecutivo */
+    .growth-summary {
+      background:linear-gradient(135deg,#eff6ff,#f0fdf4);
+      border:1px solid #bfdbfe;
+      border-left:5px solid #0053e2;
+      border-radius:10px;
+      padding:14px 18px;
+      margin-bottom:14px;
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+      gap:12px;
+    }
+    .growth-summary .gs-item { padding:6px 10px; }
+    .growth-summary .gs-lbl { font-size:.68rem; font-weight:800; letter-spacing:.05em;
+                              text-transform:uppercase; color:#475569; }
+    .growth-summary .gs-val { font-size:1.35rem; font-weight:900; color:#0f172a; margin-top:3px; }
+    .growth-summary .gs-val.up { color:#059669; }
+    .growth-summary .gs-val.down { color:#dc2626; }
+    .growth-summary .gs-note { font-size:.78rem; color:#334155; margin-top:2px; font-weight:600; }
+    .growth-summary .gs-verdict {
+      grid-column:1/-1; padding:8px 12px; border-radius:6px;
+      background:rgba(255,255,255,.7);
+      font-size:.85rem; color:#0f172a; font-weight:600;
+      border-left:3px solid #64748b;
+    }
+    .growth-summary .gs-verdict.up { border-left-color:#059669; }
+    .growth-summary .gs-verdict.down { border-left-color:#dc2626; }
+/* ==============================================================
+   BOTON GLOSARIO (inline en filter-bar) + MODAL
+   ============================================================== */
+.glossary-btn-inline{
+  background:var(--blue-navy, #0071ce); color:#fff;
+  border:none; border-radius:8px;
+  padding:6px 12px; font-weight:800; font-size:.82rem;
+  cursor:pointer; display:inline-flex; align-items:center; gap:6px;
+  transition:background .12s, transform .12s;
+  white-space:nowrap;
+}
+.glossary-btn-inline:hover{ background:#005ba8; transform:translateY(-1px); }
+.glossary-btn-inline:focus-visible{ outline:3px solid #ffc220; outline-offset:2px; }
+.glossary-btn-inline .g-ico{
+  display:inline-block; width:18px; height:18px; border-radius:50%;
+  background:#ffc220; color:#0f172a; font-weight:900;
+  line-height:18px; text-align:center; font-size:.75rem;
+}
+
+/* ==============================================================
+   BOTON FOCO MARKET SHARE (alerta) + MODAL con accionables
+   ============================================================== */
+.mks-btn-inline{
+  background:#dc2626; color:#fff;
+  border:none; border-radius:8px;
+  padding:6px 12px; font-weight:800; font-size:.82rem;
+  cursor:pointer; display:inline-flex; align-items:center; gap:6px;
+  transition:background .12s, transform .12s;
+  white-space:nowrap;
+  box-shadow:0 2px 8px rgba(220,38,38,.35);
+  animation: mks-pulse 2.4s ease-in-out infinite;
+}
+.mks-btn-inline:hover{ background:#b91c1c; transform:translateY(-1px); animation:none; }
+.mks-btn-inline:focus-visible{ outline:3px solid #ffc220; outline-offset:2px; }
+.mks-btn-inline .g-ico{
+  display:inline-block; font-size:1rem; color:#ffc220;
+}
+@keyframes mks-pulse {
+  0%,100% { box-shadow:0 2px 8px rgba(220,38,38,.35); }
+  50%     { box-shadow:0 2px 16px rgba(220,38,38,.75); }
+}
+
+.mks-modal{
+  position:fixed; inset:0; background:rgba(15,23,42,.65);
+  display:none; align-items:center; justify-content:center;
+  z-index:10000; padding:20px; overflow-y:auto;
+}
+.mks-modal.show{ display:flex; }
+.mks-box{
+  background:#fff; border-radius:14px; max-width:1100px; width:100%;
+  max-height:92vh; overflow-y:auto; box-shadow:0 24px 60px rgba(0,0,0,.35);
+}
+.mks-hd{
+  position:sticky; top:0; background:#dc2626; color:#fff;
+  padding:16px 20px; display:flex; justify-content:space-between; align-items:center;
+  border-radius:14px 14px 0 0; z-index:2;
+}
+.mks-hd h3{ font-size:1.15rem; font-weight:900; margin:0; display:flex; align-items:center; gap:10px; }
+.mks-hd .warn-ico{ font-size:1.4rem; color:#ffc220; }
+.mks-hd .mks-close{
+  background:transparent; color:#fff; border:1px solid rgba(255,255,255,.5);
+  border-radius:6px; padding:4px 12px; font-weight:800; cursor:pointer;
+}
+.mks-hd .mks-close:hover{ background:rgba(255,255,255,.15); }
+.mks-meta{
+  padding:10px 20px; background:#fef2f2; border-bottom:1px solid #fecaca;
+  font-size:.8rem; color:#7f1d1d;
+}
+.mks-scope{
+  padding:6px 20px 12px; background:#f8fafc; border-bottom:1px solid #e2e8f0;
+  font-size:.85rem; color:#0f172a; font-weight:700;
+}
+.mks-scope .scope-tag{
+  display:inline-block; background:#0071ce; color:#fff; padding:2px 10px;
+  border-radius:12px; font-size:.78rem; margin-left:6px;
+}
+.mks-body{ padding:16px 20px 24px; }
+.mks-group-title{
+  font-size:1.05rem; font-weight:900; margin:8px 0 12px;
+  padding:8px 14px; border-radius:8px; color:#fff;
+  display:flex; align-items:center; gap:8px;
+}
+.mks-group-title.ACP{ background:#0071ce; }
+.mks-group-title.PPS{ background:#7c3aed; }
+.mks-group-title .count{
+  background:rgba(255,255,255,.2); padding:2px 8px; border-radius:10px;
+  font-size:.75rem;
+}
+.mks-cards{
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+  gap:12px; margin-bottom:20px;
+}
+.mks-card{
+  border:1px solid #e2e8f0; border-left:5px solid #dc2626; border-radius:10px;
+  padding:12px 14px; background:#fff; display:flex; flex-direction:column;
+  gap:8px; transition:box-shadow .15s;
+}
+.mks-card:hover{ box-shadow:0 4px 16px rgba(0,0,0,.08); }
+.mks-card .cat-name{
+  font-weight:900; color:#0f172a; font-size:1rem; letter-spacing:.2px;
+}
+.mks-card .cat-nielsen{
+  display:flex; flex-wrap:wrap; align-items:center; gap:6px;
+  padding:6px 8px; background:#eff6ff; border-radius:6px;
+  font-size:.72rem; color:#1e3a8a;
+}
+.mks-card .cat-nielsen .tag-nielsen{
+  background:#1e3a8a; color:#fff; padding:2px 6px; border-radius:4px;
+  font-weight:800; font-size:.6rem; letter-spacing:.4px;
+}
+.mks-card .cat-nielsen .gap-lbl{ color:#64748b; font-weight:700; }
+.mks-card .cat-nielsen .gap-val{ color:#dc2626; font-weight:900; }
+.mks-card .cat-nielsen .ms-val{ color:#0f172a; font-weight:900; }
+.mks-card .cat-nielsen .ms-var{ font-weight:800; }
+.mks-card .cat-nielsen .ms-var.bad{ color:#dc2626; }
+.mks-card .cat-nielsen .ms-var.good{ color:#059669; }
+.mks-card .cat-nielsen .sep{ color:#cbd5e1; }
+.mks-card .cat-nodata{
+  padding:12px; background:#f1f5f9; border-radius:6px;
+  text-align:center; color:#64748b; font-size:.85rem; font-style:italic;
+}
+
+/* Tabs internos del modal MS */
+.mks-tabs{
+  display:flex; gap:2px; background:#f1f5f9;
+  border-bottom:1px solid #e2e8f0; padding:0 12px;
+}
+.mks-tab{
+  background:transparent; border:none; color:#475569;
+  padding:12px 18px; font-weight:800; font-size:.88rem;
+  cursor:pointer; border-bottom:3px solid transparent;
+  transition:all .12s;
+}
+.mks-tab:hover{ color:#0f172a; background:rgba(255,255,255,.6); }
+.mks-tab.active{
+  color:#dc2626; border-bottom-color:#dc2626; background:#fff;
+}
+.mks-tab:focus-visible{ outline:3px solid #ffc220; outline-offset:-2px; }
+.mks-tab-panel{ display:none; }
+.mks-tab-panel.active{ display:block; }
+
+/* Card: 5 metricas en vez de 4 (para incluir COM Uds LY) */
+.mks-card .cat-metrics.cols-5{
+  grid-template-columns:repeat(5,1fr);
+}
+@media (max-width:600px){
+  .mks-card .cat-metrics.cols-5{ grid-template-columns:repeat(2,1fr); }
+}
+
+/* ==============================================================
+   PLAN DE REPOSICION Y ABASTECIMIENTO (tab dentro del modal MS)
+   ============================================================== */
+.plan-repo{ padding:6px 0 20px; }
+.plan-repo .plan-intro{
+  background:#fefce8; border-left:4px solid #ca8a04;
+  padding:10px 14px; border-radius:6px; margin-bottom:14px;
+  font-size:.85rem; color:#422006; line-height:1.5;
+}
+.plan-section{
+  border:1px solid #e2e8f0; border-radius:10px; margin-bottom:14px;
+  overflow:hidden;
+}
+.plan-section-hd{
+  padding:12px 16px; color:#fff; font-weight:900; font-size:.95rem;
+  display:flex; align-items:center; gap:10px;
+}
+.plan-section-hd .num{
+  background:rgba(255,255,255,.25); color:#fff; padding:2px 10px;
+  border-radius:12px; font-size:.78rem; font-weight:900;
+}
+.plan-section-hd .desc{
+  font-weight:500; font-size:.75rem; opacity:.9; margin-left:auto;
+  max-width:60%; text-align:right; line-height:1.3;
+}
+.plan-section-body{ padding:12px 16px; background:#fff; }
+.plan-bloque{ margin-bottom:14px; }
+.plan-bloque:last-child{ margin-bottom:0; }
+.plan-bloque-title{
+  font-weight:900; color:#0f172a; font-size:.85rem;
+  text-transform:uppercase; letter-spacing:.3px;
+  padding-bottom:6px; margin-bottom:6px;
+  border-bottom:2px solid #f1f5f9;
+}
+.plan-bloque ul{
+  list-style:none; padding:0; margin:0;
+}
+.plan-bloque li{
+  padding:6px 0 6px 26px; position:relative;
+  font-size:.85rem; color:#334155; line-height:1.45;
+  border-bottom:1px dashed #f1f5f9;
+}
+.plan-bloque li:last-child{ border-bottom:none; }
+.plan-bloque li::before{
+  content:"\2713"; position:absolute; left:6px; top:6px;
+  color:#059669; font-weight:900;
+}
+.mks-card .cat-metrics{
+  display:grid; grid-template-columns:repeat(4,1fr); gap:6px;
+  padding:6px 0; border-bottom:1px dashed #e2e8f0;
+}
+.mks-card .m{ text-align:center; }
+.mks-card .m .l{
+  font-size:.65rem; color:#64748b; text-transform:uppercase;
+  letter-spacing:.4px; font-weight:700;
+}
+.mks-card .m .v{
+  font-size:.9rem; color:#0f172a; font-weight:900; margin-top:2px;
+}
+.mks-card .m .v.bad{ color:#dc2626; }
+.mks-card .m .v.good{ color:#059669; }
+.mks-card .cat-gap{
+  display:flex; justify-content:space-between; align-items:center;
+  font-size:.8rem; font-weight:800;
+}
+.mks-card .cat-gap .gap-lbl{ color:#64748b; }
+.mks-card .cat-gap .gap-val{ color:#dc2626; font-size:.95rem; }
+.mks-card .cat-action{
+  background:#fefce8; border-left:3px solid #ca8a04; padding:8px 10px;
+  border-radius:6px; font-size:.82rem; color:#422006; line-height:1.4;
+}
+.mks-card .cat-action .action-lbl{
+  font-weight:900; text-transform:uppercase; font-size:.7rem;
+  color:#a16207; letter-spacing:.5px; display:block; margin-bottom:3px;
+}
+.glossary-modal{
+  position:fixed; inset:0; background:rgba(15,23,42,.65);
+  display:none; align-items:center; justify-content:center;
+  z-index:10000; padding:20px; overflow-y:auto;
+}
+.glossary-modal.show{ display:flex; }
+.glossary-box{
+  background:#fff; border-radius:14px; max-width:820px; width:100%;
+  max-height:90vh; overflow-y:auto; box-shadow:0 24px 60px rgba(0,0,0,.35);
+}
+.glossary-hd{
+  position:sticky; top:0; background:var(--blue-navy,#0071ce); color:#fff;
+  padding:16px 20px; display:flex; justify-content:space-between; align-items:center;
+  border-radius:14px 14px 0 0;
+}
+.glossary-hd h3{ font-size:1.15rem; font-weight:900; margin:0; }
+.glossary-hd .gclose{
+  background:transparent; color:#fff; border:1px solid rgba(255,255,255,.4);
+  border-radius:6px; padding:4px 12px; font-weight:800; cursor:pointer;
+}
+.glossary-hd .gclose:hover{ background:rgba(255,255,255,.15); }
+.glossary-body{ padding:18px 22px; }
+.glossary-body p.intro{ font-size:.88rem; color:#475569; margin-bottom:14px; }
+.glossary-item{
+  border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; margin-bottom:10px;
+  background:#fafbfc;
+}
+.glossary-item .gterm{
+  font-weight:900; color:#0f172a; font-size:.95rem; margin-bottom:4px;
+  display:flex; align-items:center; gap:8px;
+}
+.glossary-item .gterm .gbadge{
+  font-size:.7rem; background:var(--blue-navy,#0071ce); color:#fff;
+  padding:2px 8px; border-radius:999px; font-weight:700; letter-spacing:.02em;
+}
+.glossary-item .gterm .gbadge.formula{ background:#7c3aed; }
+.glossary-item .gterm .gbadge.source{ background:#0ea5e9; }
+.glossary-item .gdef{ font-size:.86rem; color:#334155; line-height:1.45; }
+.glossary-item .gformula{
+  margin-top:6px; padding:6px 10px; background:#f1f5f9; border-left:3px solid #7c3aed;
+  font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size:.78rem; color:#334155; border-radius:0 6px 6px 0;
+}
+
+/* ================================================================
+   CASCADA (agregado 2026-07-27) - Desglose Division > Depto > Catg > SubCatg
+   Bloque nuevo AGREGADO al final de la seccion 4. No toca el CSS
+   original ni el drill-down existente (deptsWrap).
+   Columnas fijas: Plan | Control | Desv Ctrl | COM LY.
+   ================================================================ */
+.cascada-wrap {
+  /* OCULTADA POR PEDIDO DE EMILIO 28/07/2026 - no es lo que queria
+     No borro el HTML/JS por si quiere volver a habilitarla despues. */
+  display: none !important;
+  margin-top:16px; margin-bottom:24px; background:#fff;
+  border:2px solid #7c3aed; border-radius:14px;
+  overflow:hidden; box-shadow:0 4px 16px rgba(124,58,237,.15);
+}
+.cascada-hd {
+  padding:16px 20px;
+  background:linear-gradient(135deg,#7c3aed,#4c1d95);
+  color:#fff; font-weight:900; font-size:1.05rem;
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+}
+.cascada-hd .em { font-size:1.15em; }
+.cascada-hd .sub {
+  font-weight:600; font-size:.75rem; opacity:.85;
+  margin-left:auto; letter-spacing:.02em;
+}
+
+/* Tabla en cascada: usa CSS grid en cada row para alinear columnas */
+.cascada-thead {
+  display:grid;
+  grid-template-columns: minmax(240px, 2.6fr) repeat(5, minmax(85px, 1fr));
+  gap:6px; padding:10px 14px;
+  background:#f1f5f9;
+  font-size:.68rem; font-weight:900; color:#475569;
+  text-transform:uppercase; letter-spacing:.05em;
+  border-bottom:2px solid var(--border);
+}
+.cascada-thead > div:not(:first-child) { text-align:right; font-variant-numeric:tabular-nums; }
+
+.cascada-row {
+  display:grid;
+  grid-template-columns: minmax(240px, 2.6fr) repeat(5, minmax(85px, 1fr));
+  gap:6px; padding:9px 14px;
+  border-bottom:1px solid #f1f5f9;
+  font-size:.82rem; align-items:center;
+  transition:background .1s ease;
+}
+.cascada-row:hover { background:#f8fafc; }
+.cascada-row > div:not(:first-child) {
+  text-align:right; font-variant-numeric:tabular-nums; font-weight:700;
+}
+.cascada-row .toggle {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:20px; height:20px; margin-right:6px; flex-shrink:0;
+  border-radius:4px; background:transparent;
+  font-size:.7rem; color:#64748b; transition:transform .15s ease;
+  cursor:pointer; user-select:none;
+}
+.cascada-row.expanded .toggle { transform:rotate(90deg); color:#1e293b; }
+.cascada-row .name {
+  display:flex; align-items:center;
+  font-weight:700; color:#1e293b;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.cascada-row .name-label { overflow:hidden; text-overflow:ellipsis; }
+.cascada-row .badge-tag {
+  display:inline-block; padding:2px 7px; border-radius:99px;
+  font-size:.62rem; font-weight:900; margin-right:6px;
+  letter-spacing:.03em; flex-shrink:0;
+}
+
+/* Niveles jerarquicos con indentacion + color. 3 niveles: dept > catg > subcatg */
+.cascada-row.lvl-dept {
+  background:#eef2ff; font-weight:800; font-size:.9rem;
+}
+.cascada-row.lvl-dept .name { color:#312e81; font-weight:800; }
+.cascada-row.lvl-dept:hover { background:#e0e7ff; }
+
+.cascada-row.lvl-catg   { padding-left:44px; background:#fff; }
+.cascada-row.lvl-catg .name { color:var(--wm-blue-dark); font-weight:700; }
+
+.cascada-row.lvl-subcatg{ padding-left:80px; background:#fafbfc; font-size:.78rem; }
+.cascada-row.lvl-subcatg .name { color:#64748b; font-weight:600; }
+.cascada-row.lvl-subcatg .toggle { visibility:hidden; }  /* hoja - sin hijos */
+
+.cascada-row.hidden { display:none; }
+
+.badge-acp{ background:#cffafe; color:#0e7490; }
+.badge-gm { background:#ede9fe; color:#5b21b6; }
+.badge-pps{ background:#fee2e2; color:#991b1b; }
+
+/* Colores semanticos para % */
+.pct-good { color:var(--good) !important; }
+.pct-mid  { color:var(--mid)  !important; }
+.pct-bad  { color:var(--bad)  !important; }
+.pct-neutral { color:#94a3b8 !important; }
+
+.cascada-empty {
+  padding:32px; text-align:center; color:#94a3b8;
+  font-weight:700; font-size:.85rem;
+}
+
+/* Responsive: en mobile compacta las columnas */
+@media (max-width: 640px) {
+  .cascada-thead, .cascada-row {
+    grid-template-columns: minmax(140px, 1.8fr) repeat(5, minmax(55px, 1fr));
+    font-size:.7rem; padding:8px 10px;
+  }
+  .cascada-row.lvl-catg    { padding-left:22px; }
+  .cascada-row.lvl-subcatg { padding-left:40px; font-size:.68rem; }
+}
+
+/* ================================================================
+   LAB TAB (re-aplicado 2026-07-27, ADITIVO, no toca CSS original)
+   - Barra de tabs aparece debajo del header sticky.
+   - Dashboard se oculta via body.lab-mode { main { display:none } }
+   - Lab-container se muestra solo cuando body.lab-mode esta activo.
+   ================================================================ */
+.tab-bar {
+  position:sticky; top:78px; z-index:41;
+  background:linear-gradient(180deg,#f8fafc,#eef2ff);
+  border-bottom:2px solid var(--border);
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+}
+.tab-bar-inner {
+  max-width:80rem; margin:0 auto; padding:8px 16px;
+  display:flex; gap:6px; flex-wrap:wrap; align-items:center;
+}
+.tab-btn {
+  display:inline-flex; align-items:center; gap:8px;
+  padding:10px 18px; border-radius:10px 10px 0 0;
+  border:2px solid transparent; border-bottom:none;
+  background:transparent; color:#475569; font-weight:800; font-size:.9rem;
+  cursor:pointer; transition:all .15s ease; position:relative; bottom:-2px;
+}
+.tab-btn:hover { background:rgba(67,56,202,.08); color:var(--wm-blue-dark); }
+.tab-btn.active {
+  background:#fff; color:var(--wm-blue-dark);
+  border-color:var(--border); border-bottom-color:#fff;
+  box-shadow:0 -2px 6px rgba(0,0,0,.04);
+}
+.tab-btn .lock-emoji { font-size:.9em; opacity:.75; }
+.tab-btn.active .lock-emoji { opacity:1; }
+
+/* Estrategia aditiva: NO tocamos el <main> ni sus hijos.
+   Cuando el Lab esta activo, ocultamos el <main> y mostramos el Lab. */
+body.lab-mode > main { display:none !important; }
+body:not(.lab-mode) > #lab-container { display:none !important; }
+#lab-container { max-width:80rem; margin:0 auto; padding:0 16px 60px; }
+
+/* Modal de password */
+.pw-backdrop {
+  position:fixed; inset:0; z-index:200;
+  background:rgba(15,23,42,.55); backdrop-filter:blur(4px);
+  display:flex; align-items:center; justify-content:center;
+  animation:pwFadeIn .18s ease;
+}
+@keyframes pwFadeIn { from{opacity:0} to{opacity:1} }
+.pw-card {
+  background:#fff; border-radius:16px; padding:28px 26px 22px;
+  width:min(360px, 92vw);
+  box-shadow:0 20px 60px rgba(0,0,0,.35);
+  border-top:5px solid var(--wm-yellow);
+}
+.pw-card h3 {
+  margin:0 0 4px; font-size:1.15rem; font-weight:900;
+  color:var(--wm-blue-dark);
+  display:flex; align-items:center; gap:8px;
+}
+.pw-card p { margin:0 0 14px; font-size:.82rem; color:#64748b; }
+.pw-card input[type="password"] {
+  width:100%; padding:12px 14px; font-size:1.1rem; font-weight:800;
+  letter-spacing:.4em; text-align:center;
+  border:2px solid var(--border); border-radius:10px;
+  color:var(--wm-blue-dark); background:#f8fafc;
+  -webkit-appearance:none; appearance:none;
+}
+.pw-card input[type="password"]:focus {
+  outline:none; border-color:var(--wm-blue); background:#fff;
+  box-shadow:0 0 0 3px rgba(0,113,206,.18);
+}
+.pw-card .pw-err {
+  color:var(--bad); font-size:.78rem; font-weight:700; margin-top:8px;
+  min-height:1.1em; text-align:center;
+}
+.pw-card .pw-actions {
+  margin-top:14px; display:flex; gap:8px; justify-content:flex-end;
+}
+.pw-card button {
+  padding:9px 16px; border-radius:9px; font-weight:800; font-size:.85rem;
+  cursor:pointer; border:2px solid transparent;
+}
+.pw-card .pw-cancel { background:#e2e8f0; color:#334155; }
+.pw-card .pw-cancel:hover { background:#cbd5e1; }
+.pw-card .pw-ok { background:var(--wm-blue); color:#fff; }
+.pw-card .pw-ok:hover { background:var(--wm-blue-dark); }
+
+/* Filtros por mes del Lab */
+.lab-month-bar {
+  display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+  margin:8px 0 16px; padding:10px 12px;
+  background:#fff; border:2px solid var(--border); border-radius:12px;
+}
+.lab-month-bar .lbl {
+  font-size:.72rem; font-weight:900; color:#64748b;
+  text-transform:uppercase; letter-spacing:.05em; margin-right:4px;
+}
+.lab-month-btn {
+  padding:6px 12px; border-radius:8px; border:2px solid var(--border);
+  background:#f8fafc; color:#475569; font-weight:800; font-size:.78rem;
+  cursor:pointer; transition:all .12s ease;
+}
+.lab-month-btn:hover:not(:disabled) { border-color:var(--wm-blue); color:var(--wm-blue-dark); }
+.lab-month-btn:disabled { opacity:.4; cursor:not-allowed; }
+.lab-month-btn.active {
+  background:var(--wm-blue); color:#fff; border-color:var(--wm-blue-dark);
+  box-shadow:0 2px 8px rgba(0,113,206,.35);
+}
+.lab-month-btn.ytd {
+  background:linear-gradient(135deg,var(--wm-purple),#5b21b6);
+  color:#fff; border-color:#4c1d95;
+}
+.lab-month-btn.ytd.active {
+  box-shadow:0 2px 12px rgba(76,29,149,.45);
+}
+
+.lab-placeholder {
+  background:#fff; border:2px dashed var(--wm-purple);
+  border-radius:14px; padding:32px; text-align:center;
+  color:#64748b; font-weight:700;
+}
+.lab-placeholder .em { font-size:2rem; display:block; margin-bottom:8px; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     PIN GATE MARCHANT - Whitelist de 10 claves (una por tienda L9).
+     Confidencialidad: cada clave corresponde al numero de tienda.
+     Session persiste 24hs via localStorage.
+     Insertado por Ironman el 28/07/2026.
+     ============================================================ -->
+<style id="marchant-pin-style">
+  #mpin-overlay {
+    position: fixed; inset: 0; z-index: 999999;
+    background: linear-gradient(135deg,#0053e2 0%,#001f6e 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    padding: 20px;
+  }
+  #mpin-overlay.hidden { display: none !important; }
+  #mpin-overlay .box {
+    background:#fff; border-radius:20px; padding:40px 32px;
+    box-shadow:0 20px 60px rgba(0,0,0,.4);
+    max-width:420px; width:100%; text-align:center;
+  }
+  #mpin-overlay .icon { font-size:3rem; margin-bottom:8px; }
+  #mpin-overlay h2 {
+    color:#0053e2; font-size:1.4rem; font-weight:900;
+    margin:0 0 6px 0;
+  }
+  #mpin-overlay p { color:#64748b; font-size:.9rem; margin:0 0 24px 0; }
+  #mpin-overlay input {
+    width:100%; padding:16px; text-align:center;
+    font-size:2rem; letter-spacing:12px; font-weight:900;
+    border:3px solid #cbd5e1; border-radius:12px;
+    background:#f8fafc; color:#0053e2;
+    margin-bottom:16px; font-family:inherit;
+    -webkit-appearance:none;
+  }
+  #mpin-overlay input:focus {
+    outline:none; border-color:#0053e2; background:#eff6ff;
+  }
+  #mpin-overlay input.error {
+    border-color:#dc2626; background:#fee2e2;
+    animation: mpinShake .3s;
+  }
+  @keyframes mpinShake {
+    0%,100% { transform:translateX(0); }
+    25% { transform:translateX(-8px); }
+    75% { transform:translateX(8px); }
+  }
+  #mpin-overlay button {
+    width:100%; padding:14px; border:none;
+    background:#0053e2; color:#fff;
+    font-size:1rem; font-weight:900; border-radius:12px;
+    cursor:pointer; font-family:inherit;
+  }
+  #mpin-overlay button:hover { background:#001f6e; }
+  #mpin-overlay .hint { color:#94a3b8; font-size:.75rem; margin-top:16px; line-height:1.5; }
+  #mpin-overlay .msg { color:#dc2626; font-size:.8rem; margin:8px 0 0 0; min-height:1em; font-weight:700; }
+  body.mpin-locked { overflow: hidden; }
+</style>
+
+<div id="mpin-overlay">
+  <div class="box">
+    <div class="icon">&#x1F510;</div>
+    <h2>El Viaje del Marchant</h2>
+    <p>Acceso confidencial - Ingresa tu clave</p>
+    <input type="password" id="mpin-input" placeholder="&bull;&bull;&bull;&bull;" maxlength="4" inputmode="numeric" autocomplete="off">
+    <div id="mpin-msg" class="msg"></div>
+    <button id="mpin-btn" type="button">Ingresar</button>
+    <p class="hint">Uso restringido - No compartir las cifras<br>Emilio Sanchez Villanueva &middot; Mercado Sur</p>
+  </div>
+</div>
+
+<script id="marchant-pin-script">
+(function() {
+  // Whitelist: cada tienda del Mercado Sur tiene su propia clave
+  // (numero de tienda con leading zeros para llegar a 4 digitos).
+  var VALID_PINS = ['0093','0094','0096','0099','0120','0121','0456','0618','0670','0929'];
+  var STORAGE_KEY = 'marchant_auth';
+  var SESSION_HRS = 24;
+
+  var overlay = document.getElementById('mpin-overlay');
+  var input   = document.getElementById('mpin-input');
+  var btn     = document.getElementById('mpin-btn');
+  var msg     = document.getElementById('mpin-msg');
+
+  function unlock(pin) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({pin:pin, ts:Date.now()}));
+    overlay.classList.add('hidden');
+    document.body.classList.remove('mpin-locked');
+  }
+
+  function tryLogin() {
+    var val = input.value.trim();
+    if (VALID_PINS.indexOf(val) !== -1) {
+      msg.textContent = '';
+      unlock(val);
+    } else {
+      input.classList.add('error');
+      msg.textContent = 'Clave no valida';
+      input.value = '';
+      setTimeout(function(){ input.classList.remove('error'); }, 400);
+    }
+  }
+
+  function checkExistingSession() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      var data = JSON.parse(raw);
+      var ageHrs = (Date.now() - data.ts) / (1000*60*60);
+      if (data.pin && VALID_PINS.indexOf(data.pin) !== -1 && ageHrs < SESSION_HRS) return true;
+      localStorage.removeItem(STORAGE_KEY);
+    } catch(e) {}
+    return false;
+  }
+
+  document.body.classList.add('mpin-locked');
+  btn.addEventListener('click', tryLogin);
+  input.addEventListener('keydown', function(e){ if (e.key === 'Enter') tryLogin(); });
+
+  if (checkExistingSession()) {
+    overlay.classList.add('hidden');
+    document.body.classList.remove('mpin-locked');
+  } else {
+    setTimeout(function(){ input.focus(); }, 100);
+  }
+})();
+</script>
+<!-- END PIN GATE MARCHANT -->
+
+<!-- LOADING OVERLAY -->
+<div id="loading"><div class="spinner"></div><div class="text-slate-600 font-bold">Cargando datos del Mercado Sur...</div></div>
+
+<!-- HEADER -->
+<header class="hdr">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+    <div class="flex items-center gap-3">
+      <a href="index.html" class="btn-back">&larr; Menu</a>
+      <div>
+        <div class="text-[.65rem] font-bold uppercase tracking-widest opacity-80">Mercado Sur - Hiper Sur (L9)</div>
+        <div class="text-xl md:text-2xl font-black leading-tight">El Viaje del Merchant</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="pilar.html?v=LIQ_FIX_20260727" target="_blank" rel="noopener"
+       class="btn-back"
+       style="background:linear-gradient(135deg,#0d9488,#134e4a); border-color:#134e4a;"
+       title="Abrir Pilar de Crecimiento (todas las campanas HSV) en nueva pestana"
+       aria-label="Ver campanas HSV (Pilar) en nueva pestana">
+       &#x1F4E2; Ver Campanas HSV &nbsp;&#x2197;
+    </a>
+    <span class="badge-beta">Modo Prueba</span>
+      <span class="text-xs opacity-80" id="genAt"></span>
+    </div>
+  </div>
+</header>
+
+<!-- TAB BAR (Lab tab con clave 0618) - aditivo, no modifica header ni main -->
+<div class="tab-bar" role="tablist" aria-label="Vistas del Merchant">
+  <div class="tab-bar-inner">
+    <button type="button" class="tab-btn active" role="tab"
+            data-tab="tab-dashboard" aria-selected="true">
+      &#x1F4CA; Dashboard
+    </button>
+    <button type="button" class="tab-btn" role="tab"
+            data-tab="tab-lab" data-locked="1" aria-selected="false">
+      &#x1F9EA; Laboratorio <span class="lock-emoji">&#x1F512;</span>
+    </button>
+  </div>
+</div>
+
+<!-- FILTER BAR -->
+<div class="filter-bar">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3 flex-wrap">
+    <label class="text-sm font-black text-slate-700">Mercado:</label>
+    <select id="marketSel" style="font-weight:800;padding:4px 8px;border-radius:6px;border:2px solid #0053e2;background:#eff6ff;color:#0053e2">
+      <option value="L9" selected>Hiper Sur (10 tiendas) - COMPLETO</option>
+      <option value="L1">Hiper Norte (9 tiendas)</option>
+      <option value="L2">Hiper IV y RM (12 tiendas)</option>
+      <option value="L3">Hiper V Region (13 tiendas)</option>
+      <option value="L4">Hiper RM Oriente (10 tiendas)</option>
+      <option value="L5">Hiper RM SurPoniente (13 tiendas)</option>
+      <option value="L6">Hiper RM SurOriente (13 tiendas)</option>
+      <option value="L7">Hiper VI - VII (12 tiendas)</option>
+      <option value="L8">Hiper VIII (10 tiendas)</option>
+    </select>
+    <span class="text-xs" id="marketBadge" style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:6px;font-weight:700">Full</span>
+    <span style="width:1px;height:24px;background:#cbd5e1;margin:0 6px"></span>
+    <label class="text-sm font-black text-slate-700">Tienda:</label>
+    <select id="storeSel"></select>
+    <!-- BUSCADOR RAPIDO DE TIENDA (agregado 28/07/2026 por pedido de Emilio).
+         Escribi codigo (ej: 618) o nombre (ej: casona) y auto-selecciona
+         la tienda en el dropdown de arriba. Filtrado en tiempo real. -->
+    <div style="position:relative;display:inline-flex;align-items:center;gap:6px;margin-left:8px">
+      <input type="text" id="storeSearch" placeholder="&#x1F50D; buscar tienda..."
+        autocomplete="off"
+        style="padding:5px 10px;border:2px solid #cbd5e1;border-radius:8px;font-size:.85rem;width:180px;background:#f8fafc;transition:border-color .2s">
+      <div id="storeSearchResults" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#fff;border:2px solid #0053e2;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);max-height:280px;overflow-y:auto;min-width:280px;z-index:100"></div>
+    </div>
+    <span class="text-xs text-slate-500" id="scopeInfo"></span>
+    <span class="text-xs" id="buildBadge" style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:6px;font-weight:600;margin-left:6px">v.B2B-24jul-0245</span>
+    <!-- Boton Foco Market Share (alerta) + Glosario, ambos alineados a la derecha -->
+    <button type="button" id="mktShareFab" class="mks-btn-inline ml-auto" aria-label="Ver Foco Market Share y accionables">
+      <span class="g-ico" aria-hidden="true">&#9888;</span>
+      <span>Foco Market Share</span>
+    </button>
+    <button type="button" id="glossaryFab" class="glossary-btn-inline" aria-label="Abrir glosario de indicadores">
+      <span class="g-ico" aria-hidden="true">?</span>
+      <span>Glosario</span>
+    </button>
+  </div>
+</div>
+
+<main class="max-w-7xl mx-auto px-4 pb-16">
+
+  <!-- KPI GRID (orden: Plan, Venta, Desviacion, COM, Avance) -->
+  <div class="sec-title"><span class="num">1</span> Resumen General</div>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div class="kpi" data-glossary="plan"><div class="lbl">Plan total</div><div class="val" id="kPlan">$0</div><div class="sub mid" id="kPlanSub">-</div></div>
+    <div class="kpi" data-glossary="venta"><div class="lbl">Venta acumulada</div><div class="val" id="kVenta">$0</div><div class="sub" id="kVentaSub">-</div></div>
+    <div class="kpi" data-glossary="desviacion" title="Diferencia entre la venta acumulada y el plan proporcional a los días transcurridos. Ejemplo: si el mes tiene 31 días y vamos por el día 20, el plan proporcional es 20/31 del plan mensual. Un valor negativo significa que vamos por debajo de lo esperado a esta altura del mes."><div class="lbl">Desviación vs plan</div><div class="val" id="kDesv">$0</div><div class="sub" id="kDesvSub">-</div></div>
+    <div class="kpi kpi-com" data-glossary="com"><div class="lbl">COM vs año anterior</div><div class="val" id="kCom">0%</div><div class="sub" id="kComSub">-</div></div>
+  </div>
+
+  <!-- KPI SECUNDARIOS (orden: Unidades, Ecommerce, Completitud SS, Instock BQ) -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+    <div class="kpi" data-glossary="unidades" title="Cantidad de piezas/items vendidos en el mes (no CLP). Sub muestra unidades LY y % de variación vs año pasado."><div class="lbl">Unidades vendidas</div><div class="val" id="kUds">0</div><div class="sub" id="kUdsSub">-</div></div>
+    <div class="kpi" data-glossary="ecommerce"><div class="lbl">Venta eCommerce</div><div class="val" id="kEcom">$0</div><div class="sub" id="kEcomSub">-</div></div>
+    <div class="kpi" data-glossary="completitud" title="Completitud B2B (Indicadores SOD): items de la Canasta de Mercado que tuvieron venta ese dia y estan sin quiebre, sobre el total de items de la Canasta con venta. Formula validada 29/07/2026 contra reporte PBI oficial: matchea 98% mercado. KPI en construccion mientras se afina detalle por tienda."><div class="lbl">Completitud <span style="background:#fef3c7;color:#92400e;font-size:9px;padding:1px 5px;border-radius:4px;font-weight:700;margin-left:4px">EN CONSTRUCCION</span></div><div class="val" id="kCompl">--</div><div class="sub mid" id="kComplSub">en construccion</div></div>
+    <div class="kpi" data-glossary="instock" title="Instock BQ: porcentaje de items del snapshot diario sin quiebre de stock (BREAK_IND=0). Fuente: PDWBI_SE.AG_INSTOCK_STORE, snapshot del ultimo dia disponible."><div class="lbl">Instock BQ</div><div class="val" id="kInstock">0%</div><div class="sub" id="kInstockSub">-</div></div>
+  </div>
+
+  <!-- GRUPOS ACP / GM / PPS -->
+  <div class="sec-title"><span class="num">2</span> Por Grupo Segmento (ACP / GM / PPS)</div>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="groupsWrap"></div>
+
+  <!-- CRECIMIENTO / DECRECIMIENTO CHARTS -->
+  <div class="sec-title"><span class="num">3</span> Departamentos: Crecimiento vs LY</div>
+  <div class="growth-summary" id="growthSummary" aria-live="polite">
+    <div class="gs-item"><div class="gs-lbl">Total deptos analizados</div><div class="gs-val" id="gsTotal">0</div><div class="gs-note" id="gsTotalNote">-</div></div>
+    <div class="gs-item"><div class="gs-lbl">Creciendo vs LY</div><div class="gs-val up" id="gsUp">0</div><div class="gs-note" id="gsUpNote">-</div></div>
+    <div class="gs-item"><div class="gs-lbl">Cayendo vs LY</div><div class="gs-val down" id="gsDown">0</div><div class="gs-note" id="gsDownNote">-</div></div>
+    <div class="gs-item"><div class="gs-lbl">COM del mercado</div><div class="gs-val" id="gsMktCom">0%</div><div class="gs-note" id="gsMktComNote">Unidades vs año pasado</div></div>
+    <div class="gs-verdict" id="gsVerdict">Cargando resumen...</div>
+  </div>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="chart-card">
+      <div class="chart-hd up">Top Crecimiento vs Año Pasado</div>
+      <div class="chart-wrap"><canvas id="chartUp"></canvas></div>
+      <div class="chart-analysis chart-analysis-up" id="chartUpAnalysis">
+        <h4> Cómo leer este gráfico</h4>
+        <div class="lead">Cargando análisis...</div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-hd down">Mayor Caída vs Año Pasado</div>
+      <div class="chart-wrap"><canvas id="chartDown"></canvas></div>
+      <div class="chart-analysis" id="chartDownAnalysis">
+        <h4> Cómo leer este gráfico</h4>
+        <div class="lead">Cargando análisis...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DETALLE POR DEPTO -->
+  <div class="sec-title"><span class="num">4</span> Detalle por Departamento</div>
+
+  <!-- BUSCADOR GLOBAL -->
+  <div class="search-wrap">
+    <div class="search-box" id="searchBox">
+      <span class="icon" aria-hidden="true">&#x1F50D;</span>
+      <input type="search" id="searchInput" placeholder="Buscar depto, sub-depto, categoría o subcategoría..."
+             aria-label="Buscar en el detalle de departamentos" autocomplete="off" />
+      <button type="button" class="clear" id="searchClear" aria-label="Limpiar buscador" title="Limpiar">&#x2715;</button>
+    </div>
+    <div class="scope-chips" role="tablist" aria-label="Filtrar por grupo">
+      <button type="button" class="scope-chip active" data-scope="ALL" role="tab" aria-selected="true">Todos</button>
+      <button type="button" class="scope-chip acp"    data-scope="ACP" role="tab" aria-selected="false">ACP</button>
+      <button type="button" class="scope-chip gm"     data-scope="GM"  role="tab" aria-selected="false">GM</button>
+      <button type="button" class="scope-chip pps"    data-scope="PPS" role="tab" aria-selected="false">PPS</button>
+    </div>
+    <div class="search-stats" id="searchStats" style="display:none">0 resultados</div>
+  </div>
+
+  <!-- ================================================================
+       DESGLOSE EN CASCADA (movido arriba 2026-07-27 v3)
+       Departamento › Categoria › Sub Categoria - click para desplegar
+       ================================================================ -->
+  <div class="cascada-wrap" id="cascadaWrap">
+    <div class="cascada-hd">
+      <span class="em">&#x1F4CB;</span>
+      <span>Desglose en Cascada: Departamento › Categoría › Sub Categoría</span>
+      <span class="sub" id="cascadaScope">Alcance: Todo Mercado Sur</span>
+    </div>
+    <div class="cascada-thead">
+      <div>Nivel / Nombre</div>
+      <div title="Plan de venta del mes completo (meta)">Plan Venta</div>
+      <div title="Plan prorrateado a la fecha (ritmo esperado hoy)">Control</div>
+      <div title="Desviación vs Control - Venta actual vs plan al día">Desv Control</div>
+      <div title="Venta del ano pasado en el mismo período">Venta LY</div>
+      <div title="COM: Variación de unidades vs LY (ano pasado)">COM LY</div>
+    </div>
+    <div id="cascadaBody">
+      <div class="cascada-empty">Cargando desglose...</div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 gap-4" id="deptsWrap"></div>
+
+</main>
+
+<!-- LAB CONTAINER (aditivo, no modifica el <main> del dashboard) -->
+<div id="lab-container">
+  <div class="sec-title" style="margin-top:8px;">
+    <span class="num" style="background:linear-gradient(135deg,#7c3aed,#4c1d95);">L</span>
+    Laboratorio: Venta Total Año 2026
+  </div>
+
+  <!-- Filtros por mes -->
+  <div class="lab-month-bar" role="tablist" aria-label="Filtrar por mes">
+    <span class="lbl">Periodo:</span>
+    <button type="button" class="lab-month-btn ytd active" data-month="YTD" role="tab" aria-selected="true">YTD Año</button>
+    <button type="button" class="lab-month-btn" data-month="1"  role="tab" aria-selected="false">Ene</button>
+    <button type="button" class="lab-month-btn" data-month="2"  role="tab" aria-selected="false">Feb</button>
+    <button type="button" class="lab-month-btn" data-month="3"  role="tab" aria-selected="false">Mar</button>
+    <button type="button" class="lab-month-btn" data-month="4"  role="tab" aria-selected="false">Abr</button>
+    <button type="button" class="lab-month-btn" data-month="5"  role="tab" aria-selected="false">May</button>
+    <button type="button" class="lab-month-btn" data-month="6"  role="tab" aria-selected="false">Jun</button>
+    <button type="button" class="lab-month-btn" data-month="7"  role="tab" aria-selected="false">Jul</button>
+    <button type="button" class="lab-month-btn" data-month="8"  role="tab" aria-selected="false" disabled title="Aún sin datos">Ago</button>
+    <button type="button" class="lab-month-btn" data-month="9"  role="tab" aria-selected="false" disabled title="Aún sin datos">Sep</button>
+    <button type="button" class="lab-month-btn" data-month="10" role="tab" aria-selected="false" disabled title="Aún sin datos">Oct</button>
+    <button type="button" class="lab-month-btn" data-month="11" role="tab" aria-selected="false" disabled title="Aún sin datos">Nov</button>
+    <button type="button" class="lab-month-btn" data-month="12" role="tab" aria-selected="false" disabled title="Aún sin datos">Dic</button>
+  </div>
+
+  <!-- Chips ACP/GM/PPS (isolated: usa data-lab-scope, no data-scope) -->
+  <div class="search-wrap" style="margin-top:-6px;">
+    <div class="scope-chips" role="tablist" aria-label="Filtrar por grupo (Laboratorio)">
+      <button type="button" class="scope-chip active" data-lab-scope="ALL" role="tab" aria-selected="true">Todos</button>
+      <button type="button" class="scope-chip acp"    data-lab-scope="ACP" role="tab" aria-selected="false">ACP</button>
+      <button type="button" class="scope-chip gm"     data-lab-scope="GM"  role="tab" aria-selected="false">GM</button>
+      <button type="button" class="scope-chip pps"    data-lab-scope="PPS" role="tab" aria-selected="false">PPS</button>
+    </div>
+  </div>
+
+  <!-- KPIs del laboratorio -->
+  <div class="grid grid-cols-2 md:grid-cols-5 gap-3" id="labKpiWrap">
+    <div class="kpi"><div class="lbl">Plan periodo</div><div class="val" id="labPlan">$0</div><div class="sub mid" id="labPlanSub">-</div></div>
+    <div class="kpi"><div class="lbl">Venta periodo</div><div class="val" id="labVenta">$0</div><div class="sub" id="labVentaSub">-</div></div>
+    <div class="kpi"><div class="lbl">Cumplimiento vs plan</div><div class="val" id="labCumpl">0%</div><div class="sub" id="labCumplSub">-</div></div>
+    <div class="kpi"><div class="lbl">Venta LY comparable</div><div class="val" id="labLy">$0</div><div class="sub" id="labLySub">-</div></div>
+    <div class="kpi kpi-com"><div class="lbl">COM (uds vs LY)</div><div class="val" id="labCom">0%</div><div class="sub" id="labComSub">-</div></div>
+  </div>
+
+  <!-- Ranking por tienda -->
+  <div class="sec-title"><span class="num" style="background:linear-gradient(135deg,#7c3aed,#4c1d95);">1</span> Venta por Tienda (período seleccionado)</div>
+  <div class="lab-placeholder" id="labStoresPlaceholder">
+    <span class="em">&#x1F9EA;</span>
+    <div>Cargando datos YTD desde BigQuery...</div>
+  </div>
+  <div class="grid grid-cols-1 gap-4" id="labStoresWrap" style="display:none"></div>
+</div>
+
+<!-- MODAL DE PASSWORD (Laboratorio) -->
+<div id="pwModal" class="pw-backdrop" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pwTitle">
+  <div class="pw-card">
+    <h3 id="pwTitle">&#x1F512; Zona restringida</h3>
+    <p>El Laboratorio está en pruebas. Ingresa la clave para continuar.</p>
+    <input type="password" id="pwInput" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="####" />
+    <div class="pw-err" id="pwErr">&nbsp;</div>
+    <div class="pw-actions">
+      <button type="button" class="pw-cancel" id="pwCancel">Cancelar</button>
+      <button type="button" class="pw-ok" id="pwOk">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- FIRMA DEL AUTOR -->
+<div class="signature">
+  Reporte generado por <strong>Emilio Sánchez Villanueva</strong>
+  <span class="dot">&bull;</span>
+  Mesa de Crecimiento HSV 863 &bull; Mercado Sur
+</div>
+
+<div id="err-box" style="display:none"></div>
+
+<script>
+'use strict';
+
+// ================================================================
+// FORMATTERS
+// ================================================================
+const fmtCLP = new Intl.NumberFormat('es-CL', {style:'currency', currency:'CLP', maximumFractionDigits:0});
+const fmtIntCL = new Intl.NumberFormat('es-CL', {maximumFractionDigits:0});
+// Formato corto en MILLONES (M) - nunca usamos 'B' porque 'billon' es ambiguo en
+// espanol (short-scale vs long-scale). Todo en millones de CLP.
+const fmtCLPshort = (n) => {
+  const abs = Math.abs(n);
+  if (abs >= 100e6) return '$' + fmtIntCL.format(Math.round(n/1e6)) + 'M';
+  if (abs >= 1e6)   return '$' + (n/1e6).toFixed(1) + 'M';
+  if (abs >= 1e3)   return '$' + Math.round(n/1e3) + 'K';
+  return fmtCLP.format(n);
+};
+const fmtInt = fmtIntCL;
+const fmtPct = (n) => (n*100).toFixed(1) + '%';
+// Defensivo: null/undefined/NaN/Infinity -> '-' en lugar de 'NaN%' o '+NaN%'.
+// Cualquier campo que llegue vacio del JSON (ej. val_ly_pct=null en subcatgs)
+// muestra un guion claro en la UI en vez de NaN.
+const fmtPctSigned = (n) => {
+  if (n == null || !Number.isFinite(n)) return '-';
+  return (n >= 0 ? '+' : '') + (n*100).toFixed(1) + '%';
+};
+// Clase de color por umbral estandar Instock/Completitud: >=95 verde, 80-95 neutro, <80 rojo.
+const _pctCls = (pct) => pct >= 95 ? 'pct-good' : pct >= 80 ? '' : 'pct-bad';
+// Delta de unidades en formato corto (K/M) con signo. Ej: +1.2M, -450K, +12.345
+const fmtUdsShort = (n) => {
+  const sign = n >= 0 ? '+' : '-';
+  const abs = Math.abs(n);
+  if (abs >= 1e6) return sign + (abs/1e6).toFixed(1) + 'M';
+  if (abs >= 1e3) return sign + (abs/1e3).toFixed(1) + 'K';
+  return sign + fmtIntCL.format(abs);
+};
+
+const pctClass = (n, invert=false) => {
+  const good = invert ? n < 0 : n >= 0;
+  if (Math.abs(n) < 0.005) return 'pct-mid';
+  return good ? 'pct-good' : 'pct-bad';
+};
+
+// ================================================================
+// STATE
+// ================================================================
+let DATA = null;      // full payload from marchant_data.json
+let CURRENT = null;   // {kpis, groups} - selected scope (market or 1 store)
+let chartUp = null;
+let chartDown = null;
+
+// ================================================================
+// LOAD DATA
+// ================================================================
+async function loadData() {
+  const marketSel = document.getElementById('marketSel');
+  const marketId = marketSel ? marketSel.value : 'L9';
+  // Fetch JSON del mercado seleccionado. L9 tiene data COMPLETA (subcatg + cascada),
+  // los demas tienen solo la vista base (deptos por grupo ACP/GM/PPS).
+  const fileName = 'marchant_data_' + marketId + '.json';
+  const loadingBox = document.getElementById('loading');
+  if (loadingBox) {
+    loadingBox.classList.remove('hidden');
+    const txt = loadingBox.querySelector('div.text-slate-600');
+    if (txt) txt.textContent = 'Cargando datos de ' + (marketSel.options[marketSel.selectedIndex].text) + '...';
+  }
+  try {
+    const r = await fetch(fileName + '?v=' + Date.now(), {cache:'no-cache'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    DATA = await r.json();
+    // Badge de vista Full / Base
+    const mktBadge = document.getElementById('marketBadge');
+    if (mktBadge) {
+      if (marketId === 'L9') {
+        mktBadge.textContent = 'Datos completos';
+        mktBadge.style.background = '#dcfce7'; mktBadge.style.color = '#166534';
+      } else {
+        // L1-L8 desde 28/07/2026 usan el mismo pipeline L9 (ft_plan_bq +
+        // instock B2B + ratio estacional + COM ponderado por CY). Data completa.
+        mktBadge.textContent = 'Datos completos';
+        mktBadge.style.background = '#dcfce7'; mktBadge.style.color = '#166534';
+      }
+    }
+    // Update titulo
+    const titleEl = document.querySelector('.top-bar .text-\\[\\.65rem\\]');
+    if (titleEl && DATA.market_name) {
+      titleEl.textContent = 'Mercado ' + DATA.market_name + ' (' + DATA.market_id + ')';
+    }
+    // Banner de version
+    const v = document.getElementById('buildBadge');
+    if (v) {
+      const fecha = DATA.instock_data_date || DATA.generated_at || 's/f';
+      let fechaCorta = fecha;
+      if (/^\d{4}-\d{2}-\d{2}/.test(fecha)) {
+        const [y, m, d] = fecha.split('-');
+        fechaCorta = d + '/' + m + '/' + y.slice(2);
+      }
+      v.textContent = 'Data BQ hasta ' + fechaCorta;
+      if (/^\d{4}-\d{2}-\d{2}/.test(fecha)) {
+        const hoy = new Date();
+        const dataDay = new Date(fecha + 'T12:00:00');
+        const diffDays = Math.floor((hoy - dataDay) / 86400000);
+        if (diffDays >= 2) {
+          v.style.background = '#fef3c7';
+          v.style.color = '#92400e';
+          v.title = 'BQ va ' + diffDays + ' dias atras vs hoy.';
+        } else {
+          v.style.background = '#dcfce7'; v.style.color = '#166534';
+        }
+      }
+    }
+    initUI();
+    if (loadingBox) loadingBox.classList.add('hidden');
+  } catch (err) {
+    if (loadingBox) loadingBox.classList.add('hidden');
+    const box = document.getElementById('err-box');
+    box.style.display = 'block';
+    box.innerText = 'ERROR al cargar ' + fileName + ': ' + err.message +
+      '\n\nRevisa que el archivo este publicado en el sitio.';
+    console.error(err);
+  }
+}
+
+// Recargar cuando el usuario cambia de mercado en el dropdown
+document.addEventListener('DOMContentLoaded', () => {
+  const marketSel = document.getElementById('marketSel');
+  if (marketSel) {
+    marketSel.addEventListener('change', () => { loadData(); });
+  }
+
+  // -----------------------------------------------------------
+  // BUSCADOR RAPIDO DE TIENDA (Emilio 28/07/2026)
+  // CROSS-MERCADO v2: busca en las 102 tiendas de los 9 mercados via
+  // stores_index.json. Si la tienda seleccionada esta en OTRO mercado,
+  // switchea el marketSel primero, espera a que cargue la data, y
+  // despues selecciona la tienda en storeSel.
+  // -----------------------------------------------------------
+  const searchInp = document.getElementById('storeSearch');
+  const searchBox = document.getElementById('storeSearchResults');
+  let GLOBAL_STORES = [];  // populated on first search input
+
+  async function ensureGlobalStores() {
+    if (GLOBAL_STORES.length) return GLOBAL_STORES;
+    try {
+      const r = await fetch('stores_index.json?v=' + Date.now(), {cache: 'no-store'});
+      const j = await r.json();
+      GLOBAL_STORES = j.stores || [];
+    } catch(e) {
+      console.warn('No pude cargar stores_index.json, fallback a mercado actual:', e);
+      GLOBAL_STORES = [];  // fallback happens in renderResults
+    }
+    return GLOBAL_STORES;
+  }
+
+  if (searchInp && searchBox) {
+    async function renderResults(query) {
+      const sel = document.getElementById('storeSel');
+      if (!sel) return;
+      const q = query.trim().toLowerCase();
+      if (!q) { searchBox.style.display = 'none'; return; }
+
+      const global = await ensureGlobalStores();
+      let hits;
+      if (global.length) {
+        // Busqueda cross-mercado
+        hits = global.filter(s => {
+          const hay = (s.code + ' ' + s.name + ' ' + s.market_id + ' ' + s.market_name).toLowerCase();
+          return hay.indexOf(q) !== -1;
+        }).slice(0, 20);
+      } else {
+        // Fallback: buscar solo en el dropdown del mercado actual
+        const opts = Array.from(sel.options).filter(o => o.value !== '__market__');
+        hits = opts.filter(o => o.textContent.toLowerCase().indexOf(q) !== -1).slice(0, 15)
+          .map(o => ({code: o.value, name: o.textContent.replace(o.value + ' - ', ''),
+                      market_id: (document.getElementById('marketSel')||{}).value || '',
+                      market_name: ''}));
+      }
+
+      if (!hits.length) {
+        searchBox.innerHTML = '<div style="padding:12px;color:#94a3b8;font-size:.85rem">Sin resultados para "' + query + '"</div>';
+        searchBox.style.display = 'block';
+        return;
+      }
+
+      const currentMarket = (document.getElementById('marketSel')||{}).value || '';
+      searchBox.innerHTML = hits.map(s => {
+        const otherMarket = s.market_id && s.market_id !== currentMarket;
+        const mktBadge = otherMarket
+          ? '<span style="font-size:.68rem;background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700">'+s.market_id+' '+ (s.market_name||'') +'</span>'
+          : '';
+        return '<div class="ssrch-item" data-code="' + s.code + '" data-market="' + (s.market_id||'') + '" '
+          + 'style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:.9rem;transition:background .1s;display:flex;align-items:center;gap:4px" '
+          + 'onmouseover="this.style.background=&quot;#eff6ff&quot;" '
+          + 'onmouseout="this.style.background=&quot;#fff&quot;">'
+          + '<b style="color:#0053e2">' + s.code + '</b> - ' + s.name + mktBadge
+          + '</div>';
+      }).join('');
+      searchBox.style.display = 'block';
+    }
+
+    searchInp.addEventListener('input', () => renderResults(searchInp.value));
+    searchInp.addEventListener('focus', () => { if (searchInp.value) renderResults(searchInp.value); });
+
+    searchBox.addEventListener('click', async (e) => {
+      const item = e.target.closest('.ssrch-item');
+      if (!item) return;
+      const code = item.dataset.code;
+      const targetMarket = item.dataset.market;
+      const marketSelEl = document.getElementById('marketSel');
+      const storeSelEl  = document.getElementById('storeSel');
+
+      if (targetMarket && marketSelEl && marketSelEl.value !== targetMarket) {
+        // Cross-mercado: switch market primero, esperar data load, despues select store
+        marketSelEl.value = targetMarket;
+        // Setear un "pending store" que loadData() puede detectar y seleccionar
+        window.__pendingStoreSelect = code;
+        marketSelEl.dispatchEvent(new Event('change'));
+      } else if (storeSelEl) {
+        storeSelEl.value = code;
+        storeSelEl.dispatchEvent(new Event('change'));
+      }
+      searchInp.value = '';
+      searchBox.style.display = 'none';
+    });
+    // Cerrar al click afuera
+    document.addEventListener('click', (e) => {
+      if (e.target !== searchInp && !searchBox.contains(e.target)) {
+        searchBox.style.display = 'none';
+      }
+    });
+    // Enter selecciona la primera opcion
+    searchInp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const first = searchBox.querySelector('.ssrch-item');
+        if (first) first.click();
+      } else if (e.key === 'Escape') {
+        searchInp.value = '';
+        searchBox.style.display = 'none';
+      }
+    });
+  }  // END if (searchInp && searchBox)
+});
+
+// ================================================================
+// INIT UI - store selector + render
+// ================================================================
+function initUI() {
+  document.getElementById('genAt').innerText = 'Actualizado: ' + DATA.generated_at.replace('T', ' ');
+
+  const sel = document.getElementById('storeSel');
+  sel.innerHTML = '';
+  const optAll = document.createElement('option');
+  optAll.value = '__market__';
+  optAll.textContent = `Todo Mercado Sur (${DATA.store_count} tiendas)`;
+  sel.appendChild(optAll);
+
+  // Ordenamos las tiendas por numero de local ascendente (93, 94, 96, 99, 120,
+  // 121, 456, 618, 670, 929). El orden en DATA.stores viene por venta desc,
+  // pero el usuario prefiere buscar por numero de local.
+  const storesSorted = [...DATA.stores].sort((a, b) => {
+    const na = parseInt(a.code, 10);
+    const nb = parseInt(b.code, 10);
+    if (isNaN(na) || isNaN(nb)) return String(a.code).localeCompare(String(b.code));
+    return na - nb;
+  });
+  storesSorted.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.code;
+    o.textContent = `${s.code} - ${s.name}`;
+    sel.appendChild(o);
+  });
+
+  sel.addEventListener('change', renderCurrent);
+
+  // Cross-market handoff: si el buscador global disparo un cambio de
+  // mercado con una tienda especifica solicitada, la seleccionamos apenas
+  // termina de cargar la data del nuevo mercado.
+  if (window.__pendingStoreSelect) {
+    const pending = String(window.__pendingStoreSelect);
+    window.__pendingStoreSelect = null;
+    const target = Array.from(sel.options).find(o => o.value === pending);
+    if (target) {
+      sel.value = pending;
+    } else {
+      console.warn('Store', pending, 'no encontrada en mercado', DATA.market_id);
+    }
+  }
+  renderCurrent();
+}
+
+function renderCurrent() {
+  const code = document.getElementById('storeSel').value;
+  if (code === '__market__') {
+    CURRENT = DATA.market;
+    document.getElementById('scopeInfo').innerText =
+      `Suma de las ${DATA.store_count} tiendas del Mercado Sur`;
+  } else {
+    const s = DATA.stores.find(x => x.code === code);
+    CURRENT = { kpis: s.kpis, groups: s.groups, code: s.code, name: s.full_name };
+    document.getElementById('scopeInfo').innerText =
+      `Tienda ${s.code} - ${s.full_name}`;
+  }
+  renderKpis();
+  renderGroups();
+  renderDeptDetail();
+  renderGrowthCharts();
+}
+
+// ================================================================
+// RENDER: KPI cards
+// ================================================================
+function renderKpis() {
+  const k = CURRENT.kpis;
+  document.getElementById('kPlan').textContent  = fmtCLPshort(k.plan);
+  // Mostramos meta del mes completo + plan proporcional a los dias transcurridos
+  const planMtdTxt = k.plan_mtd ? ' | Al día: ' + fmtCLPshort(k.plan_mtd) : '';
+  document.getElementById('kPlanSub').textContent = 'Meta del mes' + planMtdTxt;
+
+  document.getElementById('kVenta').textContent = fmtCLPshort(k.venta_val);
+  const vsub = document.getElementById('kVentaSub');
+  // Sub secundario: variacion en UNIDADES para tener el contexto de volumen.
+  // El COM principal (venta CLP vs LY) va en su propio KPI abajo.
+  const udsLyPctV = k.val_ly_pct != null ? k.val_ly_pct : 0;
+  vsub.textContent = 'Var unid vs LY: ' + fmtPctSigned(udsLyPctV);
+  vsub.className = 'sub ' + (udsLyPctV >= 0 ? 'good' : 'bad');
+
+  // Avance de plan removido del Resumen (redundante con Desviacion vs plan).
+  // El campo sigue vivo en el detalle de depto (Menu 4) donde tiene sentido.
+
+  document.getElementById('kUds').textContent = fmtInt.format(k.venta_uds);
+  const usub = document.getElementById('kUdsSub');
+  // Sub muestra el % variacion vs LY (unidades) para no perder el dato:
+  // el KPI grande queda en el CLP y aca el detalle de piezas.
+  const udsLyPct = k.val_ly_pct != null ? k.val_ly_pct : 0;
+  usub.textContent = 'LY: ' + fmtInt.format(k.uds_ly) + ' | ' + fmtPctSigned(udsLyPct);
+  usub.className = 'sub ' + (udsLyPct >= 0 ? 'good' : 'bad');
+
+  // DESVIACION vs plan: mostramos el % grande (mas facil de leer)
+  // y el CLP absoluto en chiquito debajo para tener el contexto
+  document.getElementById('kDesv').textContent = fmtPctSigned(k.desviacion_pct);
+  const dsub = document.getElementById('kDesvSub');
+  dsub.textContent = fmtCLPshort(k.desviacion) + ' vs plan';
+  dsub.className = 'sub ' + (k.desviacion >= 0 ? 'good' : 'bad');
+
+  document.getElementById('kEcom').textContent = fmtCLPshort(k.venta_ecom);
+  document.getElementById('kEcomSub').textContent = 'Part: ' + fmtPct(k.ecom_part);
+
+  // Completitud B2B (Back to Basic): item snap 1d con SW_CANASTA_MERCADO=1
+  // AND SALES_UNIT_QTY>0. Formula validada 29/07/2026: matchea 98% del
+  // reporte PBI oficial "Indicadores SOD" al 28/07. Se muestra con badge
+  // "EN CONSTRUCCION" mientras se afina detalle por tienda.
+  const kCompl = document.getElementById('kCompl');
+  const kComplSub = document.getElementById('kComplSub');
+  const complPct = (k.completitud || 0) * 100;
+  if (k.completitud != null && k.completitud_items_total) {
+    kCompl.textContent = complPct.toFixed(1) + '%';
+    kComplSub.textContent = fmtInt.format(k.completitud_items_total) + ' items (en construccion)';
+    kComplSub.className = 'sub ' + (complPct >= 95 ? 'good' : complPct >= 80 ? 'mid' : 'bad');
+  } else {
+    kCompl.textContent = '--';
+    if (kComplSub) kComplSub.textContent = 'en construccion';
+  }
+
+  // Instock BQ: snapshot diario. Verde >=95, neutro 80-95, rojo <80.
+  // El sub muestra cuantos items evaluados (para dimensionar la muestra).
+  const kInstock = document.getElementById('kInstock');
+  const kInstockSub = document.getElementById('kInstockSub');
+  const instPct = (k.instock || 0) * 100;
+  kInstock.textContent = instPct.toFixed(1) + '%';
+  const instItems = k.instock_items_total || 0;
+  kInstockSub.textContent = instItems ? fmtInt.format(instItems) + ' items evaluados' : 'sin data';
+  kInstockSub.className = 'sub ' + (instPct >= 95 ? 'good' : instPct >= 80 ? 'mid' : 'bad');
+
+  // COM vs ano anterior: MATCHEA EXACTO con el PBI oficial Smart Selling.
+  // Regla FIJA (22/07/2026 v2): usar val_ly_pct (CLP) - matchea el PBI que
+  // muestra COM en pesos por tienda. A nivel mercado se aplica "same-store
+  // sales": excluye tiendas sin base LY (ej: store 96 Temuco Prieto que es
+  // nueva). Ese calculo lo hace merge_subcatg_data.py y ya viene en
+  // k.val_ly_pct del payload del mercado.
+  const comPctRatio = k.val_ly_pct != null ? k.val_ly_pct : 0;
+  document.getElementById('kCom').textContent = fmtPctSigned(comPctRatio);
+  const comSub = document.getElementById('kComSub');
+  const comPct = comPctRatio * 100;
+  const clpDelta = (k.venta_val_ly ? (k.venta_val || 0) - (k.venta_val_ly || 0) : 0);
+  const trend = comPct >= 2  ? 'Crecimiento saludable' :
+                comPct >= 0  ? 'Ligera mejora' :
+                comPct >= -2 ? 'Casi plano' :
+                comPct >= -5 ? 'Caída moderada' : 'Caída fuerte';
+  comSub.textContent = fmtCLPshort(clpDelta) + ' CLP vs LY | ' + trend;
+  comSub.className = 'sub ' + (comPct >= 0 ? 'good' : comPct >= -2 ? 'mid' : 'bad');
+}
+
+// ================================================================
+// RENDER: Group cards (ACP / GM / PPS)
+// ================================================================
+function renderGroups() {
+  const wrap = document.getElementById('groupsWrap');
+  wrap.innerHTML = '';
+  ['ACP', 'GM', 'PPS'].forEach(g => {
+    const gd = CURRENT.groups[g];
+    if (!gd || !gd.totals) return;
+    const t = gd.totals;
+    const depts = gd.depts || [];
+    const subCumpl = (t.cumplimiento * 100).toFixed(1) + '%';
+    // Var vs LY del grupo: MATCHEA con PBI oficial (CLP).
+    // Consistente con el KPI COM del Punto 1 (val_ly_pct).
+    const grpLyPct = t.val_ly_pct != null ? t.val_ly_pct : 0;
+    const subLy = fmtPctSigned(grpLyPct);
+    const lyClass = grpLyPct >= 0 ? 'pct-good' : 'pct-bad';
+    // Completitud a nivel grupo (viene de BQ AG_INSTOCK_STORE, SW_CANASTA_MERCADO=1).
+    // Codigo de color estandar: >=95 verde, 80-95 neutro, <80 rojo.
+    const complPct = (t.completitud || 0) * 100;
+    // Instock a nivel grupo (viene de BQ AG_INSTOCK_STORE)
+    const instGrpPct = (t.instock || 0) * 100;
+    // Desv Control (MTD): (venta_val - plan_mtd) / plan_mtd. Es la que refleja
+    // si vamos al ritmo del mes proporcional a los dias transcurridos.
+    const grpDvCtrlCls = t.desviacion >= 0 ? 'pct-good' : 'pct-bad';
+
+    const html = `
+      <div class="grp-card">
+        <div class="grp-hd ${g}">
+          <div>${g}</div>
+          <span class="tag">${depts.length} deptos</span>
+        </div>
+        <div class="grp-b">
+          <div class="grp-metrics">
+            <div class="m"><div class="l">Plan</div><div class="v">${fmtCLPshort(t.plan)}</div></div>
+            <div class="m"><div class="l">Venta</div><div class="v">${fmtCLPshort(t.venta_val)}</div></div>
+            <div class="m"><div class="l">Avance de plan</div><div class="v">${subCumpl}</div></div>
+            <div class="m"><div class="l">Unidades</div><div class="v">${fmtInt.format(t.venta_uds)}</div></div>
+            <div class="m" title="Desviación vs Plan proporcional a los dias transcurridos (control). Ej dia 20/31 evalua si vamos al ritmo esperado."><div class="l">Desv Control</div><div class="v ${grpDvCtrlCls}">${fmtPctSigned(t.desviacion_pct)}</div><div class="s ${grpDvCtrlCls}">${fmtCLPshort(t.desviacion)}</div></div>
+            <div class="m"><div class="l">Var vs LY</div><div class="v ${lyClass}">${subLy}</div></div>
+            <div class="m" data-glossary="completitud" title="Completitud B2B (EN CONSTRUCCION). Formula: items Canasta con venta y sin quiebre / total items Canasta con venta."><div class="l">Completitud</div><div class="v ${_pctCls(complPct)}">${t.completitud != null ? fmtPct(t.completitud) : '--'}</div><div class="s pct-mid">en construccion</div></div>
+            <div class="m" data-glossary="instock"><div class="l">Instock BQ</div><div class="v ${_pctCls(instGrpPct)}">${instGrpPct.toFixed(1)}%</div></div>
+          </div>
+        </div>
+      </div>`;
+    wrap.insertAdjacentHTML('beforeend', html);
+  });
+}
+
+// ================================================================
+// RENDER: Dept detail (accordion). Cada depto se puede desplegar
+// para ver todas las metricas + desglose por tienda si estamos en
+// modo Mercado (todas las tiendas).
+// ================================================================
+function cumplBucket(pct) {
+  // pct viene como ratio 0-1+
+  const p = pct * 100;
+  if (p >= 80) return 'good';
+  if (p >= 60) return 'mid';
+  return 'bad';
+}
+
+// Extrae el codigo numerico del inicio de un string tipo "182 CONSUMIBLES"
+// -> "182". Devuelve string vacio si no hay codigo.
+function deptCodeFromRaw(raw) {
+  if (!raw) return '';
+  const m = String(raw).match(/^\s*(\d+)\b/);
+  return m ? m[1] : '';
+}
+
+// Prefija el codigo del depto Excel al nombre limpio: "182 Consumibles".
+function deptDisplayName(d) {
+  const code = deptCodeFromRaw(d.raw_dept);
+  return code ? `${code} ${d.name}` : d.name;
+}
+
+// Prefija el dept_id BQ al nombre, evitando duplicar si el nombre ya lo trae.
+// La data BQ es inconsistente: a veces "92 Abarrotes", a veces solo "Lacteos".
+function bqdDisplayName(bqd) {
+  const id = String(bqd.dept_id || '').trim();
+  const name = String(bqd.dept_name || '').trim();
+  if (!id) return name;
+  // \b para chequear que sea un token completo (no que "9" matchee "92 X")
+  const re = new RegExp('^' + id + '\\b');
+  return re.test(name) ? name : `${id} ${name}`;
+}
+
+function findStoreContributions(groupKey, deptName) {
+  // Devuelve [{store_code, store_name, plan, venta, cumpl, uds, var_ly}, ...]
+  // solo tiene sentido en vista Mercado (todas las tiendas)
+  const out = [];
+  DATA.stores.forEach(s => {
+    const depts = (s.groups[groupKey] && s.groups[groupKey].depts) || [];
+    const match = depts.find(d => d.name === deptName);
+    if (match) {
+      out.push({
+        code: s.code,
+        name: s.name,
+        plan: match.plan,
+        venta: match.venta_val,
+        cumpl: match.cumplimiento,
+        uds: match.venta_uds,
+        val_ly_pct: match.val_ly_pct,
+        desviacion: match.desviacion,
+      });
+    }
+  });
+  out.sort((a, b) => b.venta - a.venta);
+  return out;
+}
+
+function renderDeptDetail() {
+  const wrap = document.getElementById('deptsWrap');
+  wrap.innerHTML = '';
+  const isMarket = document.getElementById('storeSel').value === '__market__';
+
+  ['ACP', 'GM', 'PPS'].forEach(g => {
+    const gd = CURRENT.groups[g];
+    if (!gd || !gd.depts || gd.depts.length === 0) return;
+
+    // Ratio del grupo padre = plan_mtd / venta_LY. Se usa como PROXY del plan MTD
+    // para los 5 sub-deptos que Merch Planning Chile NO planifica en FT_PLAN
+    // (dept_id 18 Art.Temporada, 21 Cortinas, 53 Descartables, 58 Warranties,
+    // 73 Libros). Verificado con bigquery-explorer: no existe plan en NINGUNA
+    // tabla viva para esos deptos. Entonces heredamos la expectativa del grupo:
+    //   plan_proxy_bqd = venta_LY_bqd * ratio_grupo
+    // Esto asume: "el bqd huerfano crece/cae al ritmo esperado del grupo padre".
+    const gTotals = gd.totals || {};
+    const groupPlanLyRatio = (gTotals.plan_mtd && gTotals.venta_val_ly)
+                              ? gTotals.plan_mtd / gTotals.venta_val_ly
+                              : 1.0;
+
+    const rowsHtml = gd.depts.map((d, idx) => {
+      const cumplPct = (d.cumplimiento * 100).toFixed(1);
+      const cumplCls = cumplBucket(d.cumplimiento);
+      const lyCls = pctClass(d.val_ly_pct);
+      const desvCls = d.desviacion >= 0 ? 'pct-good' : 'pct-bad';
+
+      // ============================================================
+      // Desglose por SUB-DEPARTAMENTO (nivel BQ dept) - acordeon anidado
+      // Cada BQ dept muestra sus subcategorias al expandirse.
+      // Plan prorrateado: plan_bqd = plan_excel * venta_bqd / venta_excel
+      // ============================================================
+      let subDeptsHtml = '';
+      const bqDepts = d.bq_depts || [];
+      if (bqDepts.length > 0) {
+        const rowsBqd = bqDepts.map((bqd, subIdx) => {
+          // Calculamos metricas del bqd LIVE (val_ly_pct del JSON viene null,
+          // solo lo trae el depto padre). Y en vez de mostrar avance/cumplimiento
+          // (contra plan MES completo, engañoso a mitad de mes) mostramos
+          // Desv Control MTD usando plan_mtd_bq que es exacto de FT_PLAN.
+          const bqdLyPct  = bqd.venta_val_ly ? (bqd.venta_val - bqd.venta_val_ly) / bqd.venta_val_ly : 0;
+          const lyC       = pctClass(bqdLyPct);
+          // Plan MTD del bqd: primero intento FT_PLAN real, sino proxy grupo * venta_LY.
+          const bqdPlanReal   = bqd.plan_mtd_bq || 0;
+          const usingProxy    = bqdPlanReal === 0 && (bqd.venta_val_ly || 0) > 0;
+          const bqdPlanMtd    = usingProxy ? bqd.venta_val_ly * groupPlanLyRatio : bqdPlanReal;
+          const bqdDvCtrlPct  = bqdPlanMtd ? (bqd.venta_val - bqdPlanMtd) / bqdPlanMtd : 0;
+          const bqdDvCtrlCls  = bqdDvCtrlPct >= 0 ? 'pct-good' : 'pct-bad';
+          const proxyMark     = usingProxy ? '<span style="color:#f59e0b;font-weight:900" title="Plan proxy = Venta LY x ratio del grupo padre (' + (groupPlanLyRatio*100).toFixed(1) + '%). Este sub-depto no esta planificado por Merch Planning en FT_PLAN.">*</span>' : '';
+          const nSubs = (bqd.subcatgs || []).length;
+
+          // Tabla de subcatgs - COLUMNAS (8 total):
+          //   Categoria | Subcategoria | Plan | Control | Desv Ctrl | Venta LY | Δ LY $ | COM LY
+          //
+          // FORMULA DEL PLAN POR SUBCATEGORIA (¡clave!):
+          //   BQ no tiene plan real por subcatg (k2_dly_sale_plan_se muerta 2022).
+          //   Prorateamos el plan MTD real del sub-depto (bqd.plan_mtd_bq de FT_PLAN,
+          //   matchea PBI exacto) usando pesos MIXTOS por subcat:
+          //
+          //     peso_sub  = venta_LY_sub   si venta_LY_sub > 0  (patron historico)
+          //                 venta_CY_sub   si LY = 0            (subcat nueva -> fallback CY)
+          //     plan_sub  = (peso_sub / suma_pesos_sub_depto) * bqd.plan_mtd_bq
+          //     desv_ctrl = (venta_CY_sub - plan_sub) / plan_sub
+          //
+          // POR QUE EL MIX (LY con fallback CY):
+          //   - LY puro: 6.2% de subcats son NUEVAS (LY=0) -> daban Plan=$0 y Desv='-' (blanco)
+          //   - CY puro: Desv Ctrl siempre = Desv Ctrl del sub-depto padre (constante, inutil)
+          //   - MIX: subs historicas usan su patron LY (varia por growth). Subs nuevas usan su
+          //     propia venta CY como plan implicito -> Desv Ctrl neutro (~0%) que dice "esta cat
+          //     nueva viene siguiendo su ritmo natural, no hay historia contra que comparar".
+          //   - Sanity: la suma de todos los plan_sub del sub-depto = bqd.plan_mtd_bq EXACTO.
+          //
+          // CASO EXTREMO: si bqd.plan_mtd_bq = 0 (36 sub-deptos, 7%) -> muestra 's/d' en Plan
+          // y Desv Ctrl, con tooltip explicativo.
+          const subcatgArr = bqd.subcatgs || [];
+          // Pesos mixtos: LY si existe, CY si no. Suma total para normalizar.
+          const scWeights = subcatgArr.map(sc => (sc.venta_val_ly && sc.venta_val_ly > 0)
+                                            ? sc.venta_val_ly
+                                            : (sc.venta_val || 0));
+          const totalWeight = scWeights.reduce((a, b) => a + b, 0);
+          const hasBqdPlan = bqdPlanMtd > 0;
+          const rowsSubs = subcatgArr.map((sc, i) => {
+            const vCy    = sc.venta_val || 0;
+            const vLy    = sc.venta_val_ly || 0;
+            const dLy    = vCy - vLy;
+            const dLyCls = dLy >= 0 ? 'pct-good' : 'pct-bad';
+            const scLyPct = vLy ? dLy / vLy : null;
+            const scLyC   = scLyPct == null ? '' : pctClass(scLyPct);
+            // Plan MTD subcat: preferir plan_mtd calculado en backend (merge_subcatg_data.py
+            // enrich_subcatgs_plan_mtd) que usa fallback jerarquico LY->MKT_LY->MKT_CY->CY.
+            // Esto arregla Store 96 (sin LY historico) para que cada subcatg muestre Desv
+            // Ctrl distintiva y no la misma del sub-depto padre.
+            // Si no viene (JSON viejo o bqd sin plan), fallback al calculo LEGACY con share LY/CY tienda.
+            const backendPlanMtd = (typeof sc.plan_mtd === 'number' && sc.plan_mtd > 0) ? sc.plan_mtd : null;
+            const share = totalWeight > 0 ? (scWeights[i] / totalWeight) : 0;
+            const legacyPlanMtd = hasBqdPlan ? share * bqdPlanMtd : 0;
+            const scPlanMtd = backendPlanMtd != null ? backendPlanMtd : legacyPlanMtd;
+            const scDesvCtrlPct = scPlanMtd > 0 ? (vCy - scPlanMtd) / scPlanMtd : null;
+            const scDvCls  = scDesvCtrlPct == null ? '' : (scDesvCtrlPct >= 0 ? 'pct-good' : 'pct-bad');
+            const planTxt  = scPlanMtd > 0 ? (fmtCLPshort(scPlanMtd) + proxyMark) : '<span title="Sub-depto sin plan MTD en FT_PLAN y sin venta LY para proxy" style="color:#94a3b8">s/d</span>';
+            const desvTxt  = scPlanMtd > 0 ? (fmtPctSigned(scDesvCtrlPct) + proxyMark) : '<span title="Sin plan MTD para calcular" style="color:#94a3b8">s/d</span>';
+            const srcTag = sc.plan_mtd_src || '';
+            const srcLabels = { 'LY': 'Peso LY tienda', 'MKT_LY': 'Peso LY mercado (tienda sin LY)', 'MKT_CY': 'Peso CY mercado', 'CY': 'Peso CY tienda' };
+            const planTooltip = srcTag && srcLabels[srcTag]
+              ? `Plan MTD subcat: ${srcLabels[srcTag]} x Plan MTD sub-depto (FT_PLAN)`
+              : 'Plan MTD subcat (share LY tienda o CY) x Plan MTD sub-depto (FT_PLAN)';
+
+            // Completitud a nivel subcatg (nuevo 24/07/2026): viene del CSV
+            // instock_raw con lvl=store_grupo_dept_subcatg.
+            // Formula (29/07/2026): SW_CANASTA_MERCADO=1 AND SALES_UNIT_QTY>0,
+            // snapshot 1d. Matchea reporte PBI Indicadores SOD (98%).
+            //
+            // NOTA: KPI en construccion mientras se afina por subcatg. Puede
+            // aparecer '--' si la subcatg no tiene items B2B con venta ese dia.
+            let complTxt, complCls;
+            if (sc.completitud_ss_pct != null) {
+              const scPct = sc.completitud_ss_pct * 100;
+              complTxt = scPct.toFixed(1) + '%';
+              complCls = _pctCls(scPct);
+            } else {
+              complTxt = '<span style="color:#cbd5e1" title="Sin items B2B con venta ese dia">--</span>';
+              complCls = '';
+            }
+
+            return `<tr>
+              <td title="${sc.catg_name}">${sc.catg_name}</td>
+              <td>${sc.subcatg_name}</td>
+              <td title="${planTooltip}">${planTxt}</td>
+              <td>${fmtCLPshort(vCy)}</td>
+              <td class="${scDvCls}" title="Desv Ctrl = (Venta - Plan MTD) / Plan MTD. Positivo = subcat ganó share vs LY. Negativo = perdió share.">${desvTxt}</td>
+              <td>${fmtCLPshort(vLy)}</td>
+              <td class="${dLyCls}" title="Delta vs LY en CLP absolutos (Venta CY - Venta LY)">${dLy >= 0 ? '+' : ''}${fmtCLPshort(dLy)}</td>
+              <td class="${scLyC}" title="COM LY = (Venta CY - Venta LY) / Venta LY. '-' si no hay venta LY.">${fmtPctSigned(scLyPct)}</td>
+              <td class="${complCls}" title="Completitud = items Canasta de Mercado sin quiebre / total Canasta (Back to Basic). * = fallback a Instock total. † = fallback al sub-depto padre.">${complTxt}</td>
+            </tr>`;
+          }).join('');
+
+          const subcatgTable = nSubs > 0 ? `
+            <div class="subcatg-table-wrap">
+              <table class="subcatg-tbl">
+                <thead><tr>
+                  <th>Categoría</th><th>Subcategoría</th><th>Plan</th><th>Control</th><th>Desv Ctrl</th>
+                  <th>Venta LY</th><th>Δ LY $</th><th>COM LY</th><th title="Completitud B2B - EN CONSTRUCCION. Formula validada mercado, afinando por subcatg.">Compl<span style="font-size:8px;color:#f59e0b;margin-left:3px">*</span></th>
+                </tr></thead>
+                <tbody>${rowsSubs}</tbody>
+              </table>
+            </div>` : `<div class="subcatg-empty">Sin subcategorías</div>`;
+
+          return `
+            <div class="bqd-row">
+              <div class="bqd-head" role="button" tabindex="0" aria-expanded="false">
+                <div class="bqd-chevron" aria-hidden="true">&#x276F;</div>
+                <div class="bqd-name">${bqdDisplayName(bqd)}</div>
+                <div class="bqd-quick"><span class="lbl">Venta</span>${fmtCLPshort(bqd.venta_val)}</div>
+                <div class="bqd-quick ${lyC}" title="COM LY = (Venta CY - Venta LY) / Venta LY"><span class="lbl">LY</span>${fmtPctSigned(bqdLyPct)}</div>
+                <span class="bqd-subcount">${nSubs} subcat</span>
+                <div class="dept-cumpl ${bqdDvCtrlCls}" title="Desv Control MTD = (Venta - Plan MTD) / Plan MTD">${fmtPctSigned(bqdDvCtrlPct)}${proxyMark}</div>
+              </div>
+              <div class="bqd-body">
+                ${subcatgTable}
+              </div>
+            </div>`;
+        }).join('');
+
+        subDeptsHtml = `
+          <div class="store-breakdown-title">Sub-departamentos
+            <span class="count">${bqDepts.length}</span></div>
+          <div class="bqd-list">${rowsBqd}</div>`;
+      } else {
+        subDeptsHtml = `<div class="subcatg-empty">Sin datos de sub-departamento para este departamento</div>`;
+      }
+
+      // Desglose por tienda (solo si estamos viendo Mercado)
+      let breakdownHtml = '';
+      if (isMarket) {
+        const stores = findStoreContributions(g, d.name);
+        if (stores.length > 0) {
+          const trs = stores.map(s => {
+            const c = (s.cumpl * 100).toFixed(1);
+            const cCls = cumplBucket(s.cumpl);
+            const lyC = pctClass(s.val_ly_pct);
+            return `<tr>
+              <td>${s.code} - ${s.name}</td>
+              <td>${fmtCLPshort(s.plan)}</td>
+              <td>${fmtCLPshort(s.venta)}</td>
+              <td><span class="dept-cumpl ${cCls}">${c}%</span></td>
+              <td>${fmtInt.format(s.uds)}</td>
+              <td class="${lyC}">${fmtPctSigned(s.val_ly_pct)}</td>
+            </tr>`;
+          }).join('');
+          breakdownHtml = `
+            <div class="store-breakdown-title">Desglose por tienda</div>
+            <div style="overflow-x:auto">
+              <table class="store-breakdown">
+                <thead><tr>
+                  <th>Tienda</th><th>Plan</th><th>Venta</th>
+                  <th>Avance</th><th>Unidades</th><th>Var LY</th>
+                </tr></thead>
+                <tbody>${trs}</tbody>
+              </table>
+            </div>`;
+        }
+      }
+
+      // Card interior con las 7 metricas grandes
+      const metricsHtml = `
+        <div class="dept-metrics">
+          <div class="dept-metric"><div class="l">Plan</div><div class="v">${fmtCLPshort(d.plan)}</div></div>
+          <div class="dept-metric"><div class="l">Venta</div><div class="v">${fmtCLPshort(d.venta_val)}</div></div>
+          <div class="dept-metric"><div class="l">Avance de plan</div><div class="v">${cumplPct}%</div><div class="s ${cumplCls === 'good' ? 'pct-good' : cumplCls === 'mid' ? 'pct-mid' : 'pct-bad'}">${cumplCls === 'good' ? 'Excelente' : cumplCls === 'mid' ? 'Trabajar' : 'Crítico'}</div></div>
+          <div class="dept-metric" title="Desviación vs Plan proporcional a los dias transcurridos (control). Ej dia 20/31 evalua si vamos al ritmo esperado."><div class="l">Desv Control</div><div class="v ${desvCls}">${fmtPctSigned(d.desviacion_pct)}</div><div class="s ${desvCls}">${fmtCLPshort(d.desviacion)}</div></div>
+          <div class="dept-metric"><div class="l">Venta unidades</div><div class="v">${fmtInt.format(d.venta_uds)}</div><div class="s pct-mid">LY: ${fmtInt.format(d.uds_ly)}</div></div>
+          <div class="dept-metric"><div class="l">Var vs LY</div><div class="v ${lyCls}">${fmtPctSigned(d.val_ly_pct)}</div><div class="s pct-mid">en CLP</div></div>
+          <div class="dept-metric"><div class="l">Venta eCommerce</div><div class="v">${fmtCLPshort(d.venta_ecom)}</div><div class="s pct-mid">Part: ${fmtPct(d.ecom_part)}</div></div>
+          <div class="dept-metric" data-glossary="completitud" title="Completitud B2B (EN CONSTRUCCION). Puede aparecer -- si el depto no tiene items B2B con venta el dia del snap."><div class="l">Completitud</div><div class="v ${_pctCls((d.completitud||0)*100)}">${d.completitud != null && d.completitud_items_total ? fmtPct(d.completitud) : '--'}</div><div class="s pct-mid">en construccion</div></div>
+          <div class="dept-metric" data-glossary="instock"><div class="l">Instock BQ</div><div class="v ${_pctCls((d.instock||0)*100)}">${d.instock != null ? fmtPct(d.instock) : 'sin data'}</div><div class="s pct-mid">${d.instock_items_total ? fmtInt.format(d.instock_items_total) + ' items evaluados' : ''}</div></div>
+        </div>`;
+
+      return `
+        <div class="dept-row" data-idx="${idx}">
+          <div class="dept-head" role="button" tabindex="0" aria-expanded="false">
+            <div class="dept-chevron" aria-hidden="true">&#x276F;</div>
+            <div class="dept-name">${deptDisplayName(d)}</div>
+            <div class="dept-quick"><span class="lbl">Venta</span>${fmtCLPshort(d.venta_val)}</div>
+            <div class="dept-quick ${desvCls}" title="Desviación vs Control = Plan proporcional a los dias transcurridos (Venta - Plan MTD) / Plan MTD"><span class="lbl">Desv Ctrl</span>${fmtPctSigned(d.desviacion_pct)}</div>
+            <div class="dept-quick ${lyCls}"><span class="lbl">LY</span>${fmtPctSigned(d.val_ly_pct)}</div>
+            <div class="dept-quick ${_pctCls((d.instock||0)*100)}" data-glossary="instock"><span class="lbl">Instock</span>${d.instock != null ? fmtPct(d.instock) : '-'}</div>
+          </div>
+          <div class="dept-body">
+            ${metricsHtml}
+            ${subDeptsHtml}
+            ${breakdownHtml}
+          </div>
+        </div>`;
+    }).join('');
+
+    const groupHtml = `
+      <div class="dept-group" data-scope="${g}">
+        <div class="dept-group-title ${g}">${g} - ${gd.depts.length} departamentos</div>
+        <div class="dept-list">${rowsHtml}</div>
+      </div>`;
+    wrap.insertAdjacentHTML('beforeend', groupHtml);
+  });
+
+  // Wire up toggles (delegated para que un solo listener maneje todo)
+  wrap.addEventListener('click', onDeptClick);
+  wrap.addEventListener('keydown', onDeptKey);
+
+  // Si hay un query de busqueda O un scope != ALL activo, re-aplicar
+  const searchInput = document.getElementById('searchInput');
+  if (searchInput && (searchInput.value.trim() || currentScope !== 'ALL')) {
+    applyFilter(searchInput.value);
+  }
+}
+
+// Handlers (delegados) - manejan clicks tanto en el nivel Depto (Excel)
+// como en el nivel Sub-departamento (BQ). Detectamos con closest() cual
+// fue el header real que recibio el click y solo toggleamos ESE.
+function onDeptClick(e) {
+  // Sub-departamento tiene prioridad porque esta anidado adentro
+  const bqdHead = e.target.closest('.bqd-head');
+  if (bqdHead) {
+    e.stopPropagation();
+    toggleRow(bqdHead, '.bqd-row');
+    return;
+  }
+  const head = e.target.closest('.dept-head');
+  if (head) toggleRow(head, '.dept-row');
+}
+function onDeptKey(e) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const bqdHead = e.target.closest('.bqd-head');
+  if (bqdHead) {
+    e.preventDefault(); e.stopPropagation();
+    toggleRow(bqdHead, '.bqd-row');
+    return;
+  }
+  const head = e.target.closest('.dept-head');
+  if (head) {
+    e.preventDefault();
+    toggleRow(head, '.dept-row');
+  }
+}
+function toggleRow(head, rowSelector) {
+  const row = head.closest(rowSelector);
+  const wasOpen = row.classList.contains('open');
+  row.classList.toggle('open');
+  head.setAttribute('aria-expanded', wasOpen ? 'false' : 'true');
+}
+
+// ================================================================
+// RENDER: Growth charts (top gainers / losers)
+// ================================================================
+function renderGrowthCharts() {
+  // Pool all deps across ACP/GM/PPS
+  const allDepts = [];
+  ['ACP', 'GM', 'PPS'].forEach(g => {
+    const depts = (CURRENT.groups[g] && CURRENT.groups[g].depts) || [];
+    depts.forEach(d => allDepts.push({ ...d, group: g }));
+  });
+
+  // Filter out zero-plan (irrelevant) and sort by val_ly_pct
+  const sig = allDepts.filter(d => d.plan > 0);
+  const asc  = [...sig].sort((a, b) => a.val_ly_pct - b.val_ly_pct);
+  const top5up   = [...sig].sort((a, b) => b.val_ly_pct - a.val_ly_pct).slice(0, 5);
+  const top5down = asc.slice(0, 5);
+
+  // Defensivo: si Chart.js no cargo, no rompemos toda la pagina
+  try { drawBar('chartUp',   top5up,   '#10b981'); } catch (e) { console.warn('drawBar chartUp:', e); }
+  try { drawBar('chartDown', top5down, '#ef4444'); } catch (e) { console.warn('drawBar chartDown:', e); }
+  try { renderChartUpAnalysis(top5up); }     catch (e) { console.warn('renderChartUpAnalysis:', e); }
+  try { renderChartDownAnalysis(top5down); } catch (e) { console.warn('renderChartDownAnalysis:', e); }
+  try { renderGrowthSummary(sig, top5up, top5down); } catch (e) { console.warn('renderGrowthSummary:', e); }
+}
+
+// ================================================================
+// RENDER: Resumen ejecutivo simple para la seccion 3
+// "En cristiano" - cuantos creciendo, cuantos cayendo, veredicto
+// ================================================================
+function renderGrowthSummary(allDepts, top5up, top5down) {
+  const box = document.getElementById('growthSummary');
+  if (!box || !allDepts) return;
+
+  const total = allDepts.length;
+  const up   = allDepts.filter(d => d.val_ly_pct >  0).length;
+  const down = allDepts.filter(d => d.val_ly_pct <  0).length;
+  const flat = total - up - down;
+
+  const mktCom = (CURRENT && CURRENT.kpis) ? (CURRENT.kpis.val_ly_pct || 0) : 0;
+  const mktComPct = mktCom * 100;
+
+  document.getElementById('gsTotal').textContent = total;
+  document.getElementById('gsTotalNote').textContent = flat > 0 ? (flat + ' planos') : 'Todos con movimiento';
+
+  document.getElementById('gsUp').textContent = up;
+  document.getElementById('gsUpNote').textContent =
+    top5up[0] ? ('Lider: ' + top5up[0].name.substring(0, 22)) : '-';
+
+  document.getElementById('gsDown').textContent = down;
+  document.getElementById('gsDownNote').textContent =
+            top5down[0] ? ('Mayor caída: ' + top5down[0].name.substring(0, 22)) : '-';
+
+  document.getElementById('gsMktCom').textContent = fmtPctSigned(mktCom);
+  document.getElementById('gsMktCom').className =
+    'gs-val ' + (mktComPct >= 0 ? 'up' : 'down');
+
+  // Veredicto en cristiano
+  const verdict = document.getElementById('gsVerdict');
+  let msg = '';
+  let cls = '';
+  if (mktComPct >= 2) {
+    cls = 'up';
+    msg = 'Mercado creciendo bien vs el año pasado (+' + mktComPct.toFixed(1) + '% en CLP). ' +
+          up + ' de ' + total + ' deptos con crecimiento positivo.';
+  } else if (mktComPct >= 0) {
+    cls = 'up';
+    msg = 'Mercado apenas por encima del año pasado (+' + mktComPct.toFixed(1) + '% en CLP). ' +
+          'Vale la pena revisar los ' + down + ' deptos que están cayendo.';
+  } else if (mktComPct >= -2) {
+    cls = '';
+    msg = 'Mercado casi plano vs el año pasado (' + mktComPct.toFixed(1) + '% en CLP). ' +
+          up + ' deptos crecen, ' + down + ' caen - foco en los que están abajo.';
+  } else if (mktComPct >= -5) {
+    cls = 'down';
+    msg = 'Mercado con caída moderada vs LY (' + mktComPct.toFixed(1) + '% en CLP). ' +
+          'Priorizar los top de caída: ' +
+          top5down.slice(0, 3).map(d => d.name.substring(0, 20)).join(', ') + '.';
+  } else {
+    cls = 'down';
+    msg = 'Caída importante vs el año pasado (' + mktComPct.toFixed(1) + '% en CLP). ' +
+          'Acción urgente: revisar surtido, exhibición y precio en ' + down + ' deptos.';
+  }
+  verdict.className = 'gs-verdict ' + cls;
+  verdict.textContent = msg;
+}
+
+// ================================================================
+// RENDER: Analisis narrativo del chart Top Crecimiento
+// Simetrico al chart de caida: identifica los MOTORES del crecimiento
+// para poder replicar la formula (que estan haciendo bien).
+// ================================================================
+function renderChartUpAnalysis(winners) {
+  const box = document.getElementById('chartUpAnalysis');
+  if (!box) return;
+
+  // Filtramos solo los que REALMENTE crecen (val_ly_pct > 0). Si el
+  // mercado esta cayendo en general, top5up puede contener depts en
+  // negativo que son simplemente "los menos malos" - no queremos
+  // celebrar eso.
+  const realWinners = (winners || []).filter(d => d.val_ly_pct > 0);
+
+  if (realWinners.length === 0) {
+    box.innerHTML = `
+      <h4>Cómo leer este gráfico</h4>
+      <div class="lead">Ningún departamento está creciendo vs el año pasado en este scope. Foco 100% en frenar caídas.</div>`;
+    return;
+  }
+
+  const best = realWinners[0];
+  const bestPct = (best.val_ly_pct * 100).toFixed(1);
+
+  // Venta CLP incremental aproximada gracias al crecimiento en CLP
+  const clpGained = realWinners.reduce((acc, d) => {
+    const uds_ly  = d.uds_ly    || 0;
+    const uds_now = d.venta_uds || 0;
+    const ticket  = (d.venta_val && uds_now) ? (d.venta_val / uds_now) : 0;
+    const udsGained = Math.max(uds_now - uds_ly, 0);
+    return acc + udsGained * ticket;
+  }, 0);
+
+  const bullets = realWinners.map(d => {
+    const pct = (d.val_ly_pct * 100).toFixed(1);
+    const udsGained = Math.max((d.venta_uds || 0) - (d.uds_ly || 0), 0);
+    return `<li><b>${d.name} (${d.group})</b>: +${pct}% más unidades que el año pasado` +
+           (udsGained > 0 ? ` (${fmtInt.format(Math.round(udsGained))} unid ganadas)` : ``) + `</li>`;
+  }).join('');
+
+  const clpTxt = clpGained > 0
+    ? `<strong>${fmtCLPshort(clpGained)}</strong> aprox de venta incremental por el crecimiento en CLP`
+    : `crecimiento en CLP sin traducción clara a CLP`;
+
+  box.innerHTML = `
+    <h4>Cómo leer este gráfico</h4>
+    <div class="lead">Estos son los <b>5 departamentos que más crecieron en CLP vendidas</b> vs el mismo mes del año pasado. La barra más larga es el mejor.</div>
+    <div style="margin:8px 0 6px;font-weight:800;color:#334155">Lo que hay que saber:</div>
+    <ul>
+      <li>El mejor: <b>${best.name} (${best.group})</b> con +${bestPct}% más unidades vs LY.</li>
+      <li>En estos ${realWinners.length} departamento${realWinners.length===1?'':'s'} se acumula ${clpTxt} este mes.</li>
+      ${bullets}
+    </ul>
+    <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #bbf7d0;font-size:.82rem;color:#64748b">
+      <b style="color:#15803d">Qué hacer:</b> entra al depto en la sección 4 y detecta qué subcategorías están tirando del crecimiento. Chequea si es por ampliación de surtido, mejor exhibición, campaña activa, o precio competitivo - y replica la fórmula en los deptos hermanos que están planos o cayendo.
+    </div>
+    <span class="action-tag">Replicar: ${best.name}</span>`;
+}
+
+// ================================================================
+// RENDER: Analisis narrativo del chart Mayor Caida
+// Explica en lenguaje simple que muestra el grafico y da
+// insights accionables para el marchant.
+// ================================================================
+function renderChartDownAnalysis(losers) {
+  const box = document.getElementById('chartDownAnalysis');
+  if (!box) return;
+
+  if (!losers || losers.length === 0) {
+    box.innerHTML = `
+      <h4>Cómo leer este gráfico</h4>
+      <div class="lead">No hay departamentos con caída vs el año pasado. Todo está creciendo.</div>`;
+    return;
+  }
+
+  const worst = losers[0];
+  const worstPct = (worst.val_ly_pct * 100).toFixed(1);
+  const clpLost = losers.reduce((acc, d) => {
+    const uds_ly = d.uds_ly || 0;
+    const uds_now = d.venta_uds || 0;
+    const ticketAprox = d.venta_val && uds_now ? (d.venta_val / uds_now) : 0;
+    const udsLost = Math.max(uds_ly - uds_now, 0);
+    return acc + udsLost * ticketAprox;
+  }, 0);
+
+  const bullets = losers.map(d => {
+    const pct = (d.val_ly_pct * 100).toFixed(1);
+    const udsLost = Math.max((d.uds_ly || 0) - (d.venta_uds || 0), 0);
+    return `<li><b>${d.name} (${d.group})</b>: ${pct}% menos unidades que el año pasado` +
+           (udsLost > 0 ? ` (${fmtInt.format(Math.round(udsLost))} unid perdidas)` : ``) + `</li>`;
+  }).join('');
+
+  const clpTxt = clpLost > 0 ? `<strong>${fmtCLPshort(clpLost)}</strong> aprox de venta perdida` : `venta perdida no cuantificable`;
+
+  box.innerHTML = `
+    <h4>Cómo leer este gráfico</h4>
+    <div class="lead">Estos son los <b>5 departamentos que más cayeron en CLP vendidas</b> comparado con el mismo mes del año pasado. La barra más larga es la peor caída.</div>
+    <div style="margin:8px 0 6px;font-weight:800;color:#334155">Lo que hay que saber:</div>
+    <ul>
+      <li>El peor: <b>${worst.name} (${worst.group})</b> con ${worstPct}% menos unidades vs LY.</li>
+      <li>En estos 5 departamentos se acumula ${clpTxt} este mes.</li>
+      ${bullets}
+    </ul>
+    <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #fecaca;font-size:.82rem;color:#64748b">
+      <b style="color:#1e293b">Qué hacer:</b> abrí el depto en la sección 4 abajo, entra a las subcategorías que más cayeron y chequea: completitud del surtido, quiebres de stock, y competencia externa. Si un depto entero cae, suele ser tema de plan de exhibición o cambios de precio, no solo reposición.
+    </div>
+    <span class="action-tag">Prioridad: Revisar ${worst.name}</span>`;
+}
+
+function drawBar(canvasId, items, color) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  const existing = canvasId === 'chartUp' ? chartUp : chartDown;
+  if (existing) existing.destroy();
+
+  const labels = items.map(d => `${d.name} (${d.group})`);
+  const data   = items.map(d => +(d.val_ly_pct * 100).toFixed(1));
+
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Var % vs LY',
+        data,
+        backgroundColor: color,
+        borderRadius: 6,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.parsed.x >= 0 ? '+' : ''}${ctx.parsed.x}% vs LY`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { callback: (v) => `${v >= 0 ? '+' : ''}${v}%` },
+          grid: { color: '#f1f5f9' },
+        },
+        y: {
+          ticks: { font: { size: 11, weight: 'bold' } },
+          grid: { display: false },
+        },
+      },
+    },
+  });
+
+  if (canvasId === 'chartUp') chartUp = chart;
+  else chartDown = chart;
+}
+
+// ================================================================
+// BUSCADOR global - filtra depto / sub-depto / categoria / subcatg
+// Scope opcional: 'ALL' (default) o 'ACP' / 'GM' / 'PPS'.
+// ================================================================
+const SEARCH_DEBOUNCE_MS = 140;
+let searchTimer = null;
+let currentScope = 'ALL';
+
+// Normaliza texto: lowercase + strip acentos (mismo criterio que Python)
+function searchNorm(s) {
+  if (!s) return '';
+  return String(s)
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+// Aplica el filtro al DOM. query='' + scope='ALL' restaura todo.
+function applyFilter(query) {
+  const wrap = document.getElementById('deptsWrap');
+  const q = searchNorm(query.trim());
+  const stats = document.getElementById('searchStats');
+  const box = document.getElementById('searchBox');
+
+  // 1. Aplicar scope (mostrar solo grupos que matcheen el scope)
+  wrap.querySelectorAll('.dept-group').forEach(grp => {
+    const grpScope = grp.getAttribute('data-scope');
+    const inScope = (currentScope === 'ALL') || (grpScope === currentScope);
+    grp.classList.toggle('scope-hide', !inScope);
+  });
+
+  // 2. Sin query: quitar search-hide y colapsar todo lo que queda visible
+  if (!q) {
+    wrap.querySelectorAll('.search-hide').forEach(el => el.classList.remove('search-hide'));
+    wrap.querySelectorAll('.dept-row.open, .bqd-row.open').forEach(el => {
+      el.classList.remove('open');
+      const head = el.querySelector('.dept-head, .bqd-head');
+      if (head) head.setAttribute('aria-expanded', 'false');
+    });
+    stats.style.display = 'none';
+    box.classList.remove('active');
+    return;
+  }
+
+  box.classList.add('active');
+  let matchedDepts = 0;
+  let matchedSubcatgs = 0;
+
+  wrap.querySelectorAll('.dept-row').forEach(deptRow => {
+    // Ignorar depts en grupos fuera de scope (ya estan hide por el paso 1,
+    // pero saltarlos igual para no contarlos como matches).
+    const parentGroup = deptRow.closest('.dept-group');
+    if (parentGroup && parentGroup.classList.contains('scope-hide')) {
+      return;
+    }
+
+    const deptName = searchNorm(deptRow.querySelector('.dept-name')?.textContent || '');
+    const deptMatches = deptName.includes(q);
+
+    let anyBqdVisible = false;
+
+    // Iterar sub-departamentos (BQ dept) dentro del depto
+    deptRow.querySelectorAll('.bqd-row').forEach(bqdRow => {
+      const bqdName = searchNorm(bqdRow.querySelector('.bqd-name')?.textContent || '');
+      const bqdMatches = deptMatches || bqdName.includes(q);
+
+      let anySubcatgVisible = false;
+      bqdRow.querySelectorAll('.subcatg-tbl tbody tr').forEach(tr => {
+        const cells = tr.children;
+        const catgTxt    = searchNorm(cells[0]?.textContent || '');
+        const subcatgTxt = searchNorm(cells[1]?.textContent || '');
+        const rowMatches = bqdMatches || catgTxt.includes(q) || subcatgTxt.includes(q);
+        tr.classList.toggle('search-hide', !rowMatches);
+        if (rowMatches) {
+          anySubcatgVisible = true;
+          matchedSubcatgs++;
+        }
+      });
+
+      const bqdVisible = bqdMatches || anySubcatgVisible;
+      bqdRow.classList.toggle('search-hide', !bqdVisible);
+      if (bqdVisible) {
+        bqdRow.classList.add('open');
+        const h = bqdRow.querySelector('.bqd-head');
+        if (h) h.setAttribute('aria-expanded', 'true');
+        anyBqdVisible = true;
+      } else {
+        bqdRow.classList.remove('open');
+      }
+    });
+
+    const deptVisible = deptMatches || anyBqdVisible;
+    deptRow.classList.toggle('search-hide', !deptVisible);
+    if (deptVisible) {
+      deptRow.classList.add('open');
+      const h = deptRow.querySelector('.dept-head');
+      if (h) h.setAttribute('aria-expanded', 'true');
+      matchedDepts++;
+    } else {
+      deptRow.classList.remove('open');
+    }
+  });
+
+  // 3. Grupos vacios (sin ningun dept visible tras el query) tambien se ocultan.
+  wrap.querySelectorAll('.dept-group:not(.scope-hide)').forEach(grp => {
+    const hasVisible = grp.querySelector('.dept-row:not(.search-hide)');
+    grp.classList.toggle('search-hide', !hasVisible);
+  });
+
+  const totalHits = matchedDepts + matchedSubcatgs;
+  stats.style.display = 'inline-block';
+  if (totalHits === 0) {
+    stats.textContent = `Sin resultados para "${query.trim()}"`;
+    stats.classList.add('zero');
+  } else {
+    stats.classList.remove('zero');
+    stats.textContent = `${matchedDepts} depto${matchedDepts !== 1 ? 's' : ''} · ${matchedSubcatgs} coincidencia${matchedSubcatgs !== 1 ? 's' : ''}`;
+  }
+}
+
+function setupSearch() {
+  const input = document.getElementById('searchInput');
+  const clear = document.getElementById('searchClear');
+  input.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => applyFilter(input.value), SEARCH_DEBOUNCE_MS);
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { input.value = ''; applyFilter(''); }
+  });
+  clear.addEventListener('click', () => {
+    input.value = ''; applyFilter(''); input.focus();
+  });
+
+  // Chips de scope: single-select, actualizan currentScope y re-filtran
+  document.querySelectorAll('.scope-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      currentScope = chip.getAttribute('data-scope');
+      document.querySelectorAll('.scope-chip').forEach(c => {
+        const isActive = (c === chip);
+        c.classList.toggle('active', isActive);
+        c.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      applyFilter(input.value);
+    });
+  });
+}
+
+// ================================================================
+// GLOSARIO: define cada indicador de la app en un solo lugar (DRY).
+// El boton flotante lo abre en modal. Editar aca para mantenerlo
+// actualizado; el HTML se genera dinamico.
+// ================================================================
+const GLOSSARY = [
+  { key:'plan',  term:'Plan total',
+    def:'Meta de venta en pesos (CLP) fijada para el mes en curso. Es lo que el mercado se compromete a facturar.',
+    formula:'Fuente: BigQuery PDWBI_SE.FT_PLAN (equipo Kharonte)',
+    badge:'source' },
+  { key:'venta', term:'Venta acumulada',
+    def:'Venta realizada en pesos (CLP) desde el 1ero del mes hasta el dia anterior al de hoy. No incluye devoluciones.',
+    formula:'Fuente: BigQuery dw_merch_planning_ns.retail_sales',
+    badge:'source' },
+  { key:'desviacion', term:'Desviación vs plan',
+    def:'Diferencia entre la venta acumulada y el plan proporcional a los días transcurridos del mes. Negativo = vamos abajo de lo esperado a esta altura. Se usa el plan “al día”, no el del mes completo (que sería comparar peras con manzanas al día 10).',
+    formula:'Desviación = Venta acumulada - (Plan mes * días transcurridos / días del mes)',
+    badge:'formula' },
+  { key:'com', term:'COM (venta CLP vs LY)',
+    def:'Comparable de mercado. Variación porcentual de la venta en pesos (CLP) del mismo período del año pasado (Last Year), ventana MTD equivalente. Es la métrica que aparece en el reporte oficial del merchant.',
+    formula:'COM % = (Venta CLP actual - Venta CLP LY) / Venta CLP LY',
+    badge:'formula' },
+  { key:'avance', term:'Avance de plan',
+    def:'Porcentaje del plan mensual que ya se facturó. 100% al final del mes = plan cumplido exacto. Referencias: >=95% Excelente, 80-95% A tiro, 60-80% Trabajar, <60% Crítico.',
+    formula:'Avance % = Venta acumulada / Plan total del mes',
+    badge:'formula' },
+  { key:'unidades', term:'Unidades vendidas',
+    def:'Cantidad total de unidades (piezas, kilos, litros según el item) vendidas en el período. Base para comparar crecimiento real vs LY.',
+    formula:'Fuente: BigQuery dw_merch_planning_ns.retail_sales - suma de units_sold',
+    badge:'source' },
+  { key:'ecommerce', term:'Venta eCommerce',
+    def:'Venta CLP realizada por canal online (samsclub.com.cl, delivery, click&collect). La participación “Part” indica qué % de la venta total viene de online.',
+    formula:'Part % = Venta eCommerce / Venta total',
+    badge:'formula' },
+  { key:'completitud', term:'Completitud (Back to Basic)',
+    def:'Porcentaje de items de la “Canasta de Mercado” (subset esencial curado por Walmart CL: SW_CANASTA_MERCADO=1) que estan disponibles en tienda sin quiebre (BREAK_IND=0). MATCHEA EXACTO el reporte oficial “Indicadores SOD - Back to Basic” del Centro de Informacion Walmart. Ponderado por items sobre ventana de 3 dias.',
+    formula:'Fuente: BigQuery PDWBI_SE.AG_INSTOCK_STORE (item-weighted ultimos 3 dias). Completitud = COUNT(SW_CANASTA_MERCADO=1 AND BREAK_IND=0) / COUNT(SW_CANASTA_MERCADO=1). La “Canasta de Mercado” es el subset esencial “Back to Basic” de items que siempre deben estar en gondola.',
+    badge:'source' },
+  { key:'instock', term:'Instock BQ',
+    def:'Porcentaje de ítems en el snapshot diario que NO tuvieron quiebre de stock (BREAK_IND = 0). Se calcula ponderando por cantidad de ítems (no promedio simple), asi un grupo con 10.000 skus pesa mas que uno con 200. Diferencia con Completitud SS: Instock BQ mide sin-quiebre a nivel snapshot, mientras Completitud SS mide items del surtido presentes en piso.',
+    formula:'Instock % = items sin quiebre / items totales evaluados',
+    badge:'formula' },
+  { key:'var_ly', term:'Var vs LY',
+    def:'A nivel grupo/depto/subcategoría: variación porcentual de la venta en CLP vs mismo período del año pasado (mismo criterio que COM). Verde si crece, rojo si cae.',
+    formula:'Var LY % = (Venta CLP actual - Venta CLP LY) / Venta CLP LY',
+    badge:'formula' },
+  { key:'grupos', term:'ACP / GM / PPS',
+    def:'Agrupamiento comercial de los deptos. ACP = Alimentos, Consumibles y Perecibles. GM = General Merchandise (mercadería general: casa, entretenimiento, mascotas). PPS = Perecederos (pan, lácteos, carnes, frutas y verduras).',
+    badge:null },
+];
+
+function buildGlossaryModal(){
+  if (document.getElementById('glossaryModal')) return;
+  const items = GLOSSARY.map(g => {
+    // Solo mostramos badge + caja de formula cuando es una FORMULA.
+    // El origen de la data (FUENTE) se omite a proposito para no ensuciar
+    // el glosario con detalles tecnicos que el usuario final no necesita.
+    const isFormula = g.badge === 'formula';
+    const badge = isFormula ? `<span class="gbadge formula">FORMULA</span>` : '';
+    const formulaBox = (isFormula && g.formula)
+      ? `<div class="gformula">${g.formula}</div>` : '';
+    return `
+      <div class="glossary-item" data-key="${g.key}">
+        <div class="gterm">${g.term} ${badge}</div>
+        <div class="gdef">${g.def}</div>
+        ${formulaBox}
+      </div>`;
+  }).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'glossaryModal';
+  modal.className = 'glossary-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'glossaryTitle');
+  modal.innerHTML = `
+    <div class="glossary-box">
+      <div class="glossary-hd">
+        <h3 id="glossaryTitle">Glosario de indicadores</h3>
+        <button type="button" class="gclose" aria-label="Cerrar">Cerrar X</button>
+      </div>
+      <div class="glossary-body">
+        <p class="intro">Definición rápida de cada indicador de la app. Tocá un KPI para ir directo a su definición.</p>
+        ${items}
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const close = () => modal.classList.remove('show');
+  modal.querySelector('.gclose').addEventListener('click', close);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('show')) close();
+  });
+}
+
+function openGlossary(scrollToKey){
+  buildGlossaryModal();
+  const modal = document.getElementById('glossaryModal');
+  modal.classList.add('show');
+  if (scrollToKey){
+    // pequeno delay para que el modal termine de pintar antes del scroll
+    setTimeout(() => {
+      const target = modal.querySelector(`[data-key="${scrollToKey}"]`);
+      if (target){
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.style.boxShadow = '0 0 0 3px #ffc220';
+        setTimeout(() => target.style.boxShadow = '', 1400);
+      }
+    }, 60);
+  }
+}
+
+function setupGlossaryFab(){
+  const fab = document.getElementById('glossaryFab');
+  if (fab) fab.addEventListener('click', () => openGlossary());
+  // Los KPIs con data-glossary abren el glosario en su definicion
+  document.querySelectorAll('[data-glossary]').forEach(el => {
+    el.style.cursor = 'help';
+    el.addEventListener('click', () => openGlossary(el.getAttribute('data-glossary')));
+  });
+}
+
+// ================================================================
+// FOCO MARKET SHARE - Modal con Bottom 5 categorias + accionables
+//
+// Data: viene del PAYLOAD (DATA.market_share_focus) que se computa en
+// merge_subcatg_data.py cruzando cada categoria Nielsen con la data BQ
+// real. Cada categoria trae: mercado {...} + tiendas {"<code>": {...}}.
+//
+// El GAP MM$ y MS% siguen siendo Nielsen (externo, mismo para todos).
+// Las metricas Venta/LY/COM se recalculan segun scope (mercado o tienda).
+// Los accionables son estrategicos a nivel Chile (aplican al cluster).
+// ================================================================
+
+function _mksBpsClass(varBps){
+  if (varBps == null) return '';
+  return varBps < 0 ? 'bad' : varBps > 0 ? 'good' : '';
+}
+function _mksFmtBps(n){
+  if (n == null) return '-';
+  return (n >= 0 ? '+' : '') + Math.round(n).toLocaleString('es-CL') + ' bps';
+}
+function _mksFmtGap(n){
+  if (n == null) return '-';
+  const sign = n < 0 ? '-' : '';
+  return sign + '$' + Math.abs(n).toLocaleString('es-CL') + ' MM';
+}
+function _mksFmtCLPmm(n){
+  // Formatea CLP a MM$ (millones). Ej 498000000 -> '$498 MM'
+  if (n == null || !isFinite(n)) return '-';
+  return '$' + (n/1e6).toLocaleString('es-CL', {maximumFractionDigits:0}) + ' MM';
+}
+function _mksFmtPct(n){
+  if (n == null) return 'N/A';
+  return (n >= 0 ? '+' : '') + (n*100).toFixed(1) + '%';
+}
+function _mksPctCls(n){
+  if (n == null) return '';
+  return n < 0 ? 'bad' : n > 0 ? 'good' : '';
+}
+
+function _mksResolveBucket(cat, scopeCode){
+  // scopeCode: null | '__market__' -> mercado. Sino codigo de tienda.
+  if (!scopeCode || scopeCode === '__market__') {
+    return cat.mercado || null;
+  }
+  return (cat.tiendas || {})[String(scopeCode)] || null;
+}
+
+function _mksRenderCard(cat, scopeCode){
+  const b = _mksResolveBucket(cat, scopeCode) || {};
+  const varCls = _mksBpsClass(cat.ms_var_bps);
+  const comValCls = _mksPctCls(b.com_val_pct);
+  const comUdsCls = _mksPctCls(b.com_uds_pct);
+  const noData = (b.venta_val == null || b.venta_val === 0);
+  return `
+    <div class="mks-card">
+      <div class="cat-name">${cat.categoria}</div>
+
+      <div class="cat-nielsen">
+        <span class="tag-nielsen">Nielsen L4W</span>
+        <span class="gap-lbl">GAP MM$</span>
+        <span class="gap-val">${_mksFmtGap(cat.gap_mm_clp)}</span>
+        <span class="sep">•</span>
+        <span class="gap-lbl">MS</span>
+        <span class="ms-val">${cat.ms_2026 != null ? cat.ms_2026.toFixed(1) + '%' : '-'}</span>
+        <span class="ms-var ${varCls}">${_mksFmtBps(cat.ms_var_bps)}</span>
+      </div>
+
+      ${noData ? `
+        <div class="cat-nodata">Sin ventas en esta tienda para la categoría</div>
+      ` : `
+        <div class="cat-metrics cols-5">
+          <div class="m"><div class="l">Venta MTD</div><div class="v">${_mksFmtCLPmm(b.venta_val)}</div></div>
+          <div class="m"><div class="l">Venta LY</div><div class="v">${_mksFmtCLPmm(b.venta_val_ly)}</div></div>
+          <div class="m"><div class="l">COM CLP</div><div class="v ${comValCls}">${_mksFmtPct(b.com_val_pct)}</div></div>
+          <div class="m"><div class="l">Unidades</div><div class="v">${(b.venta_uds||0).toLocaleString('es-CL')}</div></div>
+          <div class="m"><div class="l">COM Uds LY</div><div class="v ${comUdsCls}">${_mksFmtPct(b.com_uds_pct)}</div></div>
+        </div>
+      `}
+
+      <div class="cat-action">
+        <span class="action-lbl">Accionable</span>${cat.accion || ''}
+      </div>
+    </div>`;
+}
+
+function _mksRenderBody(scopeCode){
+  const mks = (DATA && DATA.market_share_focus) || null;
+  if (!mks) return '<div class="mks-nodata">Foco Market Share no disponible en este payload.</div>';
+  const grupos = mks.grupos || {};
+  const renderGroup = (gKey) => {
+    const cats = grupos[gKey] || [];
+    if (!cats.length) return '';
+    return `
+      <div class="mks-group-title ${gKey}">${gKey}<span class="count">${cats.length} categorías</span></div>
+      <div class="mks-cards">${cats.map(c => _mksRenderCard(c, scopeCode)).join('')}</div>`;
+  };
+  return renderGroup('ACP') + renderGroup('PPS');
+}
+
+let MKS_MODAL_BUILT = false;
+let PLAN_REPO_DATA = null;
+
+async function _loadPlanRepo(){
+  if (PLAN_REPO_DATA) return PLAN_REPO_DATA;
+  try {
+    const res = await fetch('plan_reposicion.json?v=' + Date.now());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    PLAN_REPO_DATA = await res.json();
+  } catch(err){
+    console.warn('No se pudo cargar plan_reposicion.json:', err);
+    PLAN_REPO_DATA = null;
+  }
+  return PLAN_REPO_DATA;
+}
+
+function _mksRenderPlanRepo(data){
+  if (!data) return '<div class="cat-nodata">Plan de reposición no disponible.</div>';
+  const meta = data.meta || {};
+  const secs = data.secciones || [];
+  const sectionsHtml = secs.map(sec => {
+    const bloquesHtml = (sec.bloques || []).map(b => `
+      <div class="plan-bloque">
+        <div class="plan-bloque-title">${b.titulo}</div>
+        <ul>${(b.items || []).map(it => `<li>${it}</li>`).join('')}</ul>
+      </div>`).join('');
+    return `
+      <div class="plan-section">
+        <div class="plan-section-hd" style="background:${sec.color || '#0071ce'}">
+          <span class="num">${sec.numero || ''}</span>
+          <span>${sec.titulo}</span>
+          <span class="desc">${sec.descripcion || ''}</span>
+        </div>
+        <div class="plan-section-body">${bloquesHtml}</div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="plan-repo">
+      <div class="plan-intro">
+        <strong>${meta.titulo || 'Plan de Reposición'}:</strong> ${meta.subtitulo || ''}<br>
+        <em>${meta.alcance || ''}</em>
+      </div>
+      ${sectionsHtml}
+    </div>`;
+}
+
+function buildMktShareModal(){
+  if (MKS_MODAL_BUILT) return;
+  const meta = ((DATA && DATA.market_share_focus && DATA.market_share_focus.meta) || {});
+
+  const modal = document.createElement('div');
+  modal.id = 'mktShareModal';
+  modal.className = 'mks-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'mksTitle');
+
+  const fuentes = [meta.fuente_externa, meta.fuente_interna].filter(Boolean).join(' · ');
+  const metaLine = [
+    fuentes,
+    meta.actualizado ? 'Actualizado: ' + meta.actualizado : '',
+    meta.nota || ''
+  ].filter(Boolean).join(' · ');
+
+  modal.innerHTML = `
+    <div class="mks-box">
+      <div class="mks-hd">
+        <h3 id="mksTitle"><span class="warn-ico" aria-hidden="true">&#9888;</span>${meta.titulo || 'Foco Market Share'}</h3>
+        <button type="button" class="mks-close" aria-label="Cerrar">Cerrar X</button>
+      </div>
+      <div class="mks-meta">${metaLine}</div>
+      <div class="mks-tabs" role="tablist">
+        <button type="button" class="mks-tab active" role="tab" data-tab="foco" aria-selected="true">Foco Market Share</button>
+        <button type="button" class="mks-tab" role="tab" data-tab="plan" aria-selected="false">Plan de Reposición</button>
+      </div>
+      <div class="mks-scope" id="mksScopeBar">Alcance: <span class="scope-tag" id="mksScope">Mercado</span></div>
+      <div class="mks-body">
+        <div class="mks-tab-panel active" data-panel="foco" id="mksPanelFoco"></div>
+        <div class="mks-tab-panel" data-panel="plan" id="mksPanelPlan"></div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  // Tab switching
+  modal.querySelectorAll('.mks-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const key = tab.getAttribute('data-tab');
+      modal.querySelectorAll('.mks-tab').forEach(t => {
+        const active = t === tab;
+        t.classList.toggle('active', active);
+        t.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      modal.querySelectorAll('.mks-tab-panel').forEach(p => {
+        p.classList.toggle('active', p.getAttribute('data-panel') === key);
+      });
+      // Scope bar solo tiene sentido en el tab foco (metricas cambian por tienda).
+      // En el tab plan el contenido es igual para todos.
+      const scopeBar = document.getElementById('mksScopeBar');
+      if (scopeBar) scopeBar.style.display = (key === 'foco') ? '' : 'none';
+      // Cargar plan on-demand (una sola vez)
+      if (key === 'plan') {
+        const panel = document.getElementById('mksPanelPlan');
+        if (panel && !panel.dataset.loaded) {
+          panel.innerHTML = '<div class="cat-nodata">Cargando plan...</div>';
+          _loadPlanRepo().then(data => {
+            panel.innerHTML = _mksRenderPlanRepo(data);
+            panel.dataset.loaded = '1';
+          });
+        }
+      }
+    });
+  });
+
+  const close = () => modal.classList.remove('show');
+  modal.querySelector('.mks-close').addEventListener('click', close);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('show')) close();
+  });
+  MKS_MODAL_BUILT = true;
+}
+
+function openMktShareFocus(){
+  buildMktShareModal();
+  const modal = document.getElementById('mktShareModal');
+  if (!modal) return;
+
+  // Scope actual = el selector de tienda
+  const scopeSel = document.getElementById('storeSel');
+  const scopeCode = scopeSel ? scopeSel.value : '__market__';
+
+  // Actualiza el scope tag
+  const scopeEl = modal.querySelector('#mksScope');
+  if (scopeEl){
+    if (!scopeCode || scopeCode === '__market__') {
+      scopeEl.textContent = 'Mercado (10 tiendas HSV Sur)';
+    } else {
+      const s = (DATA && DATA.stores || []).find(x => x.code === scopeCode);
+      const nm = s ? (s.full_name || s.name || '') : '';
+      scopeEl.textContent = `Tienda ${scopeCode}${nm ? ' - ' + nm : ''}`;
+    }
+  }
+
+  // Re-render del panel Foco con las metricas del scope actual (el plan es estatico)
+  const focoEl = modal.querySelector('#mksPanelFoco');
+  if (focoEl) focoEl.innerHTML = _mksRenderBody(scopeCode);
+
+  modal.classList.add('show');
+}
+
+function setupMktShareFab(){
+  const fab = document.getElementById('mktShareFab');
+  if (fab) fab.addEventListener('click', () => openMktShareFocus());
+}
+
+// ================================================================
+// BOOT
+// ================================================================
+setupSearch();
+setupGlossaryFab();
+setupMktShareFab();
+loadData();
+
+// ================================================================
+// DESGLOSE EN CASCADA (agregado 2026-07-27) - ADITIVO
+// Renderiza tabla jerarquica: Division > Depto > Categoria > Subcategoria
+// con columnas Plan | Control | Desv Ctrl | COM LY.
+// Datos: lee de window.DATA (que carga loadData) - se re-renderiza
+// cuando cambia el selector de tienda. NO modifica ninguna funcion
+// del dashboard original.
+// ================================================================
+(function initCascada() {
+  const wrap = document.getElementById('cascadaBody');
+  const scopeEl = document.getElementById('cascadaScope');
+  if (!wrap) return;
+
+  const GRUPOS = ['ACP', 'GM', 'PPS'];
+
+  // Helpers de formato reutilizables (no dependen de nada del dashboard)
+  const fmtM = (v) => {
+    if (v == null || isNaN(v)) return '-';
+    if (Math.abs(v) >= 1e9) return '$' + (v/1e9).toFixed(2) + 'B';
+    if (Math.abs(v) >= 1e6) return '$' + (v/1e6).toFixed(1) + 'M';
+    if (Math.abs(v) >= 1e3) return '$' + (v/1e3).toFixed(0) + 'K';
+    return '$' + Math.round(v).toLocaleString('es-CL');
+  };
+  const fmtPct1 = (v) => (v == null || isNaN(v)) ? '-' : ((v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%');
+  const pctClass = (v, invert) => {
+    if (v == null || isNaN(v)) return 'pct-neutral';
+    const bound = invert ? -v : v;
+    if (bound >= 0.02)  return 'pct-good';
+    if (bound >= -0.02) return 'pct-mid';
+    return 'pct-bad';
+  };
+
+  // Elegir scope: si storeSel = __market__ -> data.market.groups, sino -> stores[i].groups
+  function pickScope() {
+    const data = DATA;  // acceso por closure - DATA es let del script principal
+    if (!data) return null;
+    const sel = document.getElementById('storeSel');
+    const val = sel ? sel.value : '__market__';
+    if (val === '__market__') {
+      return { groups: (data.market && data.market.groups) || {}, scopeName: 'Todo Mercado Sur' };
+    }
+    const store = data.stores.find(s => String(s.code) === String(val));
+    if (!store) return null;
+    return { groups: store.groups || {}, scopeName: store.full_name || store.name };
+  }
+
+  // Toma un objeto (depto, subcatg) y devuelve {plan, ctrl, desv, ventaLy, com}
+  function metrics(node) {
+    return {
+      plan:    node.plan != null ? node.plan : node.plan_total,
+      ctrl:    node.plan_mtd != null ? node.plan_mtd : node.plan_mtd_bq,
+      desv:    node.desviacion_ctrl_pct != null ? node.desviacion_ctrl_pct : node.desviacion_pct,
+      ventaLy: node.venta_val_ly,
+      com:     node.uds_ly_pct != null ? node.uds_ly_pct : node.val_ly_pct,
+    };
+  }
+
+  // Agrega metricas de una lista de nodos (para agrupar subcatgs -> categoria)
+  function aggregate(nodes) {
+    let plan = 0, ctrl = 0, venta = 0, ventaLy = 0, uds = 0, udsLy = 0;
+    let hasCtrl = false;
+    for (const n of nodes) {
+      plan += (n.plan || 0);
+      if (n.plan_mtd != null) { ctrl += n.plan_mtd; hasCtrl = true; }
+      venta += (n.venta_val || 0);
+      ventaLy += (n.venta_val_ly || 0);
+      uds += (n.venta_uds || 0);
+      udsLy += (n.venta_uds_ly || 0);
+    }
+    return {
+      plan:    plan,
+      ctrl:    hasCtrl ? ctrl : null,
+      desv:    hasCtrl && ctrl > 0 ? (venta - ctrl) / ctrl : null,
+      ventaLy: ventaLy > 0 ? ventaLy : null,
+      com:     udsLy > 0 ? (uds - udsLy) / udsLy : null,
+    };
+  }
+
+  // Agrupa subcatgs por categoria (usando catg_id)
+  function groupByCatg(subcatgs) {
+    const map = new Map();
+    for (const sc of subcatgs) {
+      const key = sc.catg_id + '|' + sc.catg_name;
+      if (!map.has(key)) {
+        map.set(key, { catg_id: sc.catg_id, catg_name: sc.catg_name, subcatgs: [] });
+      }
+      map.get(key).subcatgs.push(sc);
+    }
+    return Array.from(map.values());
+  }
+
+  // Consolida todos los subcatgs de un depto de negocio (que tiene multiples bq_depts)
+  function collectSubcatgs(depto) {
+    const all = [];
+    for (const bq of (depto.bq_depts || [])) {
+      for (const sc of (bq.subcatgs || [])) all.push(sc);
+    }
+    return all;
+  }
+
+  function rowHTML(level, id, parentId, name, badge, m, hasChildren) {
+    const desvCls = pctClass(m.desv, false);
+    const comCls  = pctClass(m.com,  false);
+    const toggleChar = hasChildren ? '&#9654;' : '';  // triangulo derecha; hoja = vacio
+    const badgeHTML = badge ? `<span class="badge-tag badge-${badge.toLowerCase()}">${badge}</span>` : '';
+    const parentAttr = parentId ? ` data-parent="${parentId}"` : '';
+    const hiddenClass = parentId ? ' hidden' : '';
+    return `
+      <div class="cascada-row lvl-${level}${hiddenClass}" data-id="${id}"${parentAttr} data-level="${level}">
+        <div class="name">
+          <span class="toggle">${toggleChar}</span>
+          ${badgeHTML}
+          <span class="name-label" title="${name.replace(/"/g, '&quot;')}">${name}</span>
+        </div>
+        <div>${fmtM(m.plan)}</div>
+        <div>${fmtM(m.ctrl)}</div>
+        <div class="${desvCls}">${fmtPct1(m.desv)}</div>
+        <div>${fmtM(m.ventaLy)}</div>
+        <div class="${comCls}">${fmtPct1(m.com)}</div>
+      </div>`;
+  }
+
+  function renderCascada() {
+    const picked = pickScope();
+    if (!picked) {
+      wrap.innerHTML = '<div class="cascada-empty">Sin datos.</div>';
+      return;
+    }
+    scopeEl.textContent = 'Alcance: ' + picked.scopeName;
+
+    let html = '';
+    let empty = true;
+
+    // Recorre ACP > GM > PPS pero renderiza los deptos como nivel raiz.
+    // El grupo va solo como badge de color en cada depto (agrupacion visual).
+    for (const grupo of GRUPOS) {
+      const g = picked.groups[grupo];
+      if (!g || !g.depts || !g.depts.length) continue;
+
+      for (const depto of g.depts) {
+        empty = false;
+        const dId = 'd-' + grupo + '-' + (depto.raw_dept || depto.name).replace(/[^a-z0-9]/gi, '');
+        const dM = metrics(depto);
+        const dName = depto.name + (depto.raw_dept ? ' (' + depto.raw_dept + ')' : '');
+        const allSc = collectSubcatgs(depto);
+        const catgs = groupByCatg(allSc);
+
+        html += rowHTML('dept', dId, null, dName, grupo, dM, catgs.length > 0);
+
+        for (const catg of catgs) {
+          const cId = dId + '-c' + catg.catg_id;
+          const cM = aggregate(catg.subcatgs);
+          html += rowHTML('catg', cId, dId, catg.catg_name || ('Cat ' + catg.catg_id), null, cM, catg.subcatgs.length > 0);
+
+          for (const sc of catg.subcatgs) {
+            const sId = cId + '-s' + sc.subcatg_id;
+            const sM = metrics(sc);
+            html += rowHTML('subcatg', sId, cId, sc.subcatg_name || ('SubCat ' + sc.subcatg_id), null, sM, false);
+          }
+        }
+      }
+    }
+
+    wrap.innerHTML = empty
+      ? '<div class="cascada-empty">Sin datos disponibles para el alcance seleccionado.</div>'
+      : html;
+    bindToggles();
+  }
+
+  function bindToggles() {
+    wrap.querySelectorAll('.cascada-row').forEach(row => {
+      const toggle = row.querySelector('.toggle');
+      if (!toggle || !toggle.textContent.trim()) return;
+      row.addEventListener('click', (ev) => {
+        // Ignorar si el click fue en un elemento interno con propio handler (por si algun dia)
+        if (ev.target.closest('a, button')) return;
+        toggleRow(row);
+      });
+    });
+  }
+
+  function toggleRow(row) {
+    const id = row.dataset.id;
+    const expanded = row.classList.contains('expanded');
+    if (expanded) {
+      // Colapsar: ocultar TODOS los descendientes (recursivo por prefijo de id)
+      row.classList.remove('expanded');
+      wrap.querySelectorAll(`.cascada-row[data-parent]`).forEach(r => {
+        if (r.dataset.parent === id || r.dataset.parent.startsWith(id + '-')) {
+          r.classList.add('hidden');
+          r.classList.remove('expanded');
+        }
+      });
+    } else {
+      // Expandir: mostrar hijos INMEDIATOS solamente
+      row.classList.add('expanded');
+      wrap.querySelectorAll(`.cascada-row[data-parent="${id}"]`).forEach(r => {
+        r.classList.remove('hidden');
+      });
+    }
+  }
+
+  // Re-render cuando cambia el selector de tienda (mismo listener del dashboard,
+  // pero como es addEventListener aditivo, no interfiere)
+  const storeSel = document.getElementById('storeSel');
+  if (storeSel) storeSel.addEventListener('change', renderCascada);
+
+  // Esperar a que loadData haya poblado DATA (var del script principal, closure).
+  // Poll cada 200ms hasta 5s.
+  let tries = 0;
+  const poll = setInterval(() => {
+    if (typeof DATA !== 'undefined' && DATA) {
+      clearInterval(poll);
+      renderCascada();
+    } else if (++tries > 25) {
+      clearInterval(poll);
+      wrap.innerHTML = '<div class="cascada-empty">No se pudo cargar la data (timeout).</div>';
+    }
+  }, 200);
+})();
+
+// ================================================================
+// LABORATORIO + TABS + PASSWORD GATE (re-aplicado 2026-07-27)
+// Bloque 100% ADITIVO en IIFE: NO modifica ninguna funcion del dashboard.
+// Estrategia: activar `body.lab-mode` oculta el <main> via CSS y
+// muestra el #lab-container. Volver al Dashboard = quitar la clase.
+// Password 0618: se pide CADA vez que se entra al Lab (no persiste).
+// Data: fetch de marchant_ytd_data.json (calculado desde BQ Ene-Jul 2026).
+// ================================================================
+(function initMarchantLab() {
+  const LAB_PW  = '0618';
+  const btns    = document.querySelectorAll('.tab-btn');
+  const modal   = document.getElementById('pwModal');
+  const pwInput = document.getElementById('pwInput');
+  const pwErr   = document.getElementById('pwErr');
+  const pwOk    = document.getElementById('pwOk');
+  const pwCancel= document.getElementById('pwCancel');
+
+  let LAB_DATA   = null;
+  let LAB_MONTH  = 'YTD';
+  let LAB_SCOPE  = 'ALL';
+  let LAB_LOADED = false;
+
+  async function loadLabData() {
+    if (LAB_LOADED) return LAB_DATA;
+    try {
+      const res = await fetch('marchant_ytd_data.json', {cache: 'no-store'});
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      LAB_DATA = await res.json();
+      LAB_LOADED = true;
+      return LAB_DATA;
+    } catch (err) {
+      console.error('Lab data load fail:', err);
+      const ph = document.getElementById('labStoresPlaceholder');
+      if (ph) ph.innerHTML = '<span class="em">&#x274C;</span><div>No se pudo cargar marchant_ytd_data.json</div><div style="font-size:.72rem;opacity:.7;margin-top:6px;">' + err.message + '</div>';
+      throw err;
+    }
+  }
+
+  function labFilteredRows() {
+    if (!LAB_DATA) return [];
+    const storeSelEl = document.getElementById('storeSel');
+    const storeSel = storeSelEl ? storeSelEl.value : '__market__';
+    const storeFilter = (storeSel === '__market__') ? null : parseInt(storeSel, 10);
+    const monthsWithSales = LAB_DATA.meta.months_with_sales || [];
+    return LAB_DATA.rows.filter(r => {
+      if (storeFilter !== null && r.store_nbr !== storeFilter) return false;
+      if (LAB_SCOPE !== 'ALL' && r.grupo !== LAB_SCOPE) return false;
+      if (LAB_MONTH === 'YTD') return monthsWithSales.includes(r.mes);
+      return r.mes === parseInt(LAB_MONTH, 10);
+    });
+  }
+
+  function labSum(rows, key) { return rows.reduce((a, r) => a + (r[key] || 0), 0); }
+
+  function labAggregateByStore(rows) {
+    const map = new Map();
+    for (const r of rows) {
+      let g = map.get(r.store_nbr);
+      if (!g) {
+        g = { store_nbr:r.store_nbr, store_name:r.store_name,
+              venta_val:0, venta_uds:0, venta_ecom_val:0,
+              venta_val_ly:0, venta_uds_ly:0,
+              plan_clp_mes:0, plan_clp_a_la_fecha:0 };
+        map.set(r.store_nbr, g);
+      }
+      g.venta_val           += r.venta_val;
+      g.venta_uds           += r.venta_uds;
+      g.venta_ecom_val      += r.venta_ecom_val;
+      g.venta_val_ly        += r.venta_val_ly;
+      g.venta_uds_ly        += r.venta_uds_ly;
+      g.plan_clp_mes        += r.plan_clp_mes;
+      g.plan_clp_a_la_fecha += r.plan_clp_a_la_fecha;
+    }
+    return Array.from(map.values());
+  }
+
+  function labRenderKpis(rows) {
+    const venta   = labSum(rows, 'venta_val');
+    const uds     = labSum(rows, 'venta_uds');
+    const ventaLy = labSum(rows, 'venta_val_ly');
+    const udsLy   = labSum(rows, 'venta_uds_ly');
+    const planKey = (LAB_MONTH === 'YTD') ? 'plan_clp_a_la_fecha' : 'plan_clp_mes';
+    const plan    = labSum(rows, planKey);
+    const cumpl   = plan > 0 ? (venta / plan) : 0;
+    const comUds  = udsLy > 0 ? (uds - udsLy) / udsLy : 0;
+    const valVsLy = ventaLy > 0 ? (venta - ventaLy) / ventaLy : 0;
+
+    document.getElementById('labPlan').textContent    = fmtCLPshort(plan);
+    document.getElementById('labPlanSub').textContent = (LAB_MONTH === 'YTD') ? 'Prorrateado a la fecha' : 'Plan mensual completo';
+    document.getElementById('labVenta').textContent   = fmtCLPshort(venta);
+    document.getElementById('labVentaSub').innerHTML  =
+      (valVsLy >= 0 ? '<span style="color:var(--good)">+' : '<span style="color:var(--bad)">') +
+      (valVsLy * 100).toFixed(1) + '% vs LY</span>';
+    const cumplEl = document.getElementById('labCumpl');
+    cumplEl.textContent = (cumpl * 100).toFixed(1) + '%';
+    cumplEl.style.color = cumpl >= 1 ? 'var(--good)' : (cumpl >= 0.95 ? 'var(--mid)' : 'var(--bad)');
+    document.getElementById('labCumplSub').textContent = 'Venta / Plan comparable';
+    document.getElementById('labLy').textContent       = fmtCLPshort(ventaLy);
+    document.getElementById('labLySub').textContent    = fmtInt.format(udsLy) + ' uds LY';
+    const comEl = document.getElementById('labCom');
+    comEl.textContent = (comUds * 100).toFixed(1) + '%';
+    comEl.style.color = comUds >= 0 ? 'var(--good)' : 'var(--bad)';
+    document.getElementById('labComSub').textContent = fmtInt.format(uds) + ' uds CY';
+  }
+
+  function labRenderStores(rows) {
+    const wrap = document.getElementById('labStoresWrap');
+    const placeholder = document.getElementById('labStoresPlaceholder');
+    const grouped = labAggregateByStore(rows).sort((a, b) => b.venta_val - a.venta_val);
+    if (grouped.length === 0) {
+      wrap.style.display = 'none';
+      placeholder.style.display = 'block';
+      placeholder.innerHTML = '<span class="em">&#x1F937;</span><div>No hay datos para el filtro seleccionado.</div>';
+      return;
+    }
+    const planKey = (LAB_MONTH === 'YTD') ? 'plan_clp_a_la_fecha' : 'plan_clp_mes';
+    wrap.innerHTML = grouped.map(g => {
+      const plan  = g[planKey] || 0;
+      const cumpl = plan > 0 ? (g.venta_val / plan) : 0;
+      const valVsLy = g.venta_val_ly > 0 ? (g.venta_val - g.venta_val_ly) / g.venta_val_ly : 0;
+      const comUds  = g.venta_uds_ly > 0 ? (g.venta_uds - g.venta_uds_ly) / g.venta_uds_ly : 0;
+      const cumplColor = cumpl >= 1 ? 'var(--good)' : (cumpl >= 0.95 ? 'var(--mid)' : 'var(--bad)');
+      const barPct = Math.min(100, Math.max(0, cumpl * 100));
+      const periodoLabel = (LAB_MONTH === 'YTD') ? 'YTD Ene-Jul 2026' : ('Mes ' + LAB_DATA.meta.month_labels[LAB_MONTH]);
+      return `
+        <div style="background:#fff;border:2px solid var(--border);border-radius:12px;padding:14px 16px;box-shadow:0 2px 6px rgba(0,0,0,.04);">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+            <div>
+              <div style="font-weight:900;font-size:1.02rem;color:var(--wm-blue-dark);">${g.store_nbr} - ${g.store_name}</div>
+              <div style="font-size:.72rem;color:#64748b;font-weight:700;margin-top:2px;">${periodoLabel} · Alcance: ${LAB_SCOPE === 'ALL' ? 'TODOS' : LAB_SCOPE}</div>
+            </div>
+            <div style="font-size:1.35rem;font-weight:900;color:${cumplColor};font-variant-numeric:tabular-nums;">${(cumpl * 100).toFixed(1)}%</div>
+          </div>
+          <div style="height:6px;background:#f1f5f9;border-radius:99px;overflow:hidden;margin-bottom:10px;">
+            <div style="height:100%;width:${barPct}%;background:${cumplColor};transition:width .3s ease;"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;font-size:.78rem;">
+            <div><div style="color:#64748b;font-weight:700;font-size:.68rem;text-transform:uppercase;">Plan</div><div style="font-weight:800;color:#334155;font-variant-numeric:tabular-nums;">${fmtCLPshort(plan)}</div></div>
+            <div><div style="color:#64748b;font-weight:700;font-size:.68rem;text-transform:uppercase;">Venta</div><div style="font-weight:800;color:var(--wm-blue-dark);font-variant-numeric:tabular-nums;">${fmtCLPshort(g.venta_val)}</div></div>
+            <div><div style="color:#64748b;font-weight:700;font-size:.68rem;text-transform:uppercase;">LY</div><div style="font-weight:800;color:#334155;font-variant-numeric:tabular-nums;">${fmtCLPshort(g.venta_val_ly)}</div></div>
+            <div><div style="color:#64748b;font-weight:700;font-size:.68rem;text-transform:uppercase;">vs LY $</div><div style="font-weight:800;color:${valVsLy>=0?'var(--good)':'var(--bad)'};font-variant-numeric:tabular-nums;">${(valVsLy>=0?'+':'')}${(valVsLy*100).toFixed(1)}%</div></div>
+            <div><div style="color:#64748b;font-weight:700;font-size:.68rem;text-transform:uppercase;">COM Uds</div><div style="font-weight:800;color:${comUds>=0?'var(--good)':'var(--bad)'};font-variant-numeric:tabular-nums;">${(comUds>=0?'+':'')}${(comUds*100).toFixed(1)}%</div></div>
+            <div><div style="color:#64748b;font-weight:700;font-size:.68rem;text-transform:uppercase;">Uds CY</div><div style="font-weight:800;color:#334155;font-variant-numeric:tabular-nums;">${fmtInt.format(g.venta_uds)}</div></div>
+          </div>
+        </div>`;
+    }).join('');
+    placeholder.style.display = 'none';
+    wrap.style.display = 'grid';
+  }
+
+  async function renderLab() {
+    try {
+      await loadLabData();
+      const rows = labFilteredRows();
+      labRenderKpis(rows);
+      labRenderStores(rows);
+    } catch (e) { /* ya reportado */ }
+  }
+
+  function activateTab(tabId) {
+    btns.forEach(b => {
+      const on = b.dataset.tab === tabId;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    if (tabId === 'tab-lab') {
+      document.body.classList.add('lab-mode');
+      renderLab();
+    } else {
+      document.body.classList.remove('lab-mode');
+    }
+  }
+
+  function openPwModal(onSuccess) {
+    pwInput.value = '';
+    pwErr.innerHTML = '&nbsp;';
+    modal.style.display = 'flex';
+    setTimeout(() => pwInput.focus(), 40);
+    function cleanup() {
+      modal.style.display = 'none';
+      pwOk.removeEventListener('click', tryOk);
+      pwCancel.removeEventListener('click', tryCancel);
+      pwInput.removeEventListener('keydown', keyHandler);
+    }
+    function tryOk() {
+      if (pwInput.value.trim() === LAB_PW) { cleanup(); onSuccess(); }
+      else { pwErr.textContent = 'Clave incorrecta. Intenta de nuevo.'; pwInput.value = ''; pwInput.focus(); }
+    }
+    function tryCancel() { cleanup(); }
+    function keyHandler(ev) {
+      if (ev.key === 'Enter')  { ev.preventDefault(); tryOk(); }
+      if (ev.key === 'Escape') { ev.preventDefault(); tryCancel(); }
+    }
+    pwOk.addEventListener('click', tryOk);
+    pwCancel.addEventListener('click', tryCancel);
+    pwInput.addEventListener('keydown', keyHandler);
+  }
+
+  btns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+      if (btn.dataset.locked === '1') openPwModal(() => activateTab(target));
+      else activateTab(target);
+    });
+  });
+
+  document.querySelectorAll('.lab-month-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      LAB_MONTH = btn.dataset.month;
+      document.querySelectorAll('.lab-month-btn').forEach(b => {
+        const on = b === btn;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      if (LAB_LOADED) renderLab();
+    });
+  });
+
+  document.querySelectorAll('.scope-chip[data-lab-scope]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      LAB_SCOPE = chip.dataset.labScope;
+      document.querySelectorAll('.scope-chip[data-lab-scope]').forEach(c => {
+        const on = c === chip;
+        c.classList.toggle('active', on);
+        c.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      if (LAB_LOADED) renderLab();
+    });
+  });
+
+  const storeSelEl = document.getElementById('storeSel');
+  if (storeSelEl) {
+    storeSelEl.addEventListener('change', () => {
+      if (document.body.classList.contains('lab-mode') && LAB_LOADED) renderLab();
+    });
+  }
+})();
+</script>
+</body>
+
+<!-- ULTIMA ACTUALIZACION: 2026-08-11T11:42:30.442822 | DATOS DESDE: 2026-08-10T22:19:48 | VERSION: 1786462950158 -->
+</html>
